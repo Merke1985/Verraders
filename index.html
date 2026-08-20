@@ -476,6 +476,8 @@
   var roomCode = null;
   var realtimeChannel = null;
   var syncStatus = 'offline'; // offline | connecting | online
+  var lastAppliedUpdatedAt = null; // guards against re-applying our own echo
+  var pollTimer = null;
 
   function makeRoomCode(){
     var code = '';
@@ -504,7 +506,7 @@
     box.innerHTML = '';
     if(!roomCode){ return; }
     var dotClass = syncStatus === 'online' ? 'online' : (syncStatus === 'connecting' ? 'connecting' : 'offline');
-    var label = syncStatus === 'online' ? 'verbonden' : (syncStatus === 'connecting' ? 'verbinden…' : 'offline (lokaal)');
+    var label = syncStatus === 'online' ? 'verbonden (live)' : (syncStatus === 'connecting' ? 'synchroniseert…' : 'offline (lokaal)');
     var span = document.createElement('span');
     var dot = document.createElement('span');
     dot.className = 'dot-status ' + dotClass;
@@ -523,55 +525,72 @@
     box.appendChild(leave);
   }
 
+  function applyIncoming(row){
+    // row: {state, updated_at} — ignore stale/duplicate/our-own-echo payloads.
+    if(!row || !row.state) return;
+    var incoming = row.state;
+    if(typeof incoming === 'string'){
+      try{ incoming = JSON.parse(incoming); } catch(e){ return; }
+    }
+    if(row.updated_at && row.updated_at === lastAppliedUpdatedAt) return; // already have this exact version
+    state = incoming;
+    if(row.updated_at) lastAppliedUpdatedAt = row.updated_at;
+    persistLocalOnly();
+    paint();
+  }
+
   function subscribeRealtime(){
     if(!supabaseClient || !roomCode) return;
     if(realtimeChannel){ supabaseClient.removeChannel(realtimeChannel); }
-    setSyncStatus('connecting');
     realtimeChannel = supabaseClient
       .channel('room-' + roomCode)
       .on('postgres_changes', {
         event: '*', schema: 'public', table: ROOM_TABLE, filter: 'room_code=eq.' + roomCode
       }, function(payload){
-        if(payload.new && payload.new.state){
-          var incoming = payload.new.state;
-          if(typeof incoming === 'string'){
-            try{ incoming = JSON.parse(incoming); } catch(e){ incoming = null; }
-          }
-          if(incoming){
-            state = incoming;
-            persistLocalOnly();
-            paint();
-          }
-        }
+        applyIncoming(payload.new);
       })
       .subscribe(function(status){
         if(status === 'SUBSCRIBED') setSyncStatus('online');
-        else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setSyncStatus('offline');
+        else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+          if(syncStatus === 'online') setSyncStatus('connecting'); // fall back to polling, not a hard "offline"
+        }
       });
+  }
+
+  // Runs continuously as a safety net in case the realtime websocket never
+  // confirms (some networks block/throttle it) — polling still gets both
+  // iPads in sync within a few seconds either way.
+  function startPolling(){
+    if(pollTimer) return;
+    pollTimer = setInterval(function(){
+      if(roomCode && supabaseClient && document.visibilityState === 'visible'){
+        refreshFromRemote();
+      }
+    }, 3000);
   }
 
   function refreshFromRemote(){
     if(!supabaseClient || !roomCode) return;
-    supabaseClient.from(ROOM_TABLE).select('state').eq('room_code', roomCode).maybeSingle()
+    supabaseClient.from(ROOM_TABLE).select('state, updated_at').eq('room_code', roomCode).maybeSingle()
       .then(function(res){
-        if(res.data && res.data.state){
-          state = res.data.state;
-          persistLocalOnly();
-          paint();
-        }
+        if(res.error){ return; }
+        applyIncoming(res.data);
+        if(syncStatus !== 'online') setSyncStatus('connecting');
       })
       .catch(function(){});
   }
 
   function pushRemote(){
     if(!supabaseClient || !roomCode) return;
+    var stamp = new Date().toISOString();
     supabaseClient.from(ROOM_TABLE).upsert({
       room_code: roomCode,
       state: state,
-      updated_at: new Date().toISOString()
+      updated_at: stamp
     }).then(function(res){
-      if(res.error) setSyncStatus('offline');
-      else if(syncStatus !== 'online') setSyncStatus('online');
+      if(res.error){ setSyncStatus('offline'); return; }
+      lastAppliedUpdatedAt = stamp;
+      if(syncStatus === 'offline') setSyncStatus('connecting');
     }).catch(function(){ setSyncStatus('offline'); });
   }
 
@@ -587,15 +606,16 @@
     setSyncStatus('connecting');
     var proceed = function(){
       subscribeRealtime();
+      startPolling();
       persistLocalOnly();
       paint();
       pushRemote();
     };
     if(isJoin){
-      supabaseClient.from(ROOM_TABLE).select('state').eq('room_code', code).maybeSingle()
+      supabaseClient.from(ROOM_TABLE).select('state, updated_at').eq('room_code', code).maybeSingle()
         .then(function(res){
           if(res.data && res.data.state){
-            state = res.data.state;
+            applyIncoming(res.data);
           } else {
             loadLocalCache();
           }
