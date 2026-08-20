@@ -253,6 +253,16 @@
     margin: 6px 0 4px;
   }
   .reveal-sub{ color: var(--text-dim); font-size: 16px; margin-bottom: 6px; }
+  .reveal-message{
+    color: var(--text);
+    font-size: clamp(24px, 5.5vw, 46px);
+    font-weight: bold;
+    line-height: 1.35;
+    text-align: center;
+    max-width: 680px;
+    margin: 16px 0 28px;
+    text-shadow: 0 0 20px rgba(0,0,0,0.5);
+  }
   .reveal-votes{ color: var(--text-dim); font-size: 14px; letter-spacing: 1px; margin-bottom: 30px; }
   @keyframes pulse-in{
     0%{ transform: scale(0.7); opacity:0; }
@@ -712,6 +722,9 @@
     remaining2: [], // names remaining after round2 (safe pick removed)
     round2Pick: null, // tentative "safe" tap in round2, awaiting confirm
     round3Pick: null, // tentative "safe" tap in round3, awaiting confirm
+    round1TwoPick: false, // true als er precies 2 verraders zijn — dan 2 ipv 3 opties in ronde 1
+    recruitPick: null,    // tentative keuze op het "kies een nieuwe verrader" scherm
+    newTraitorName: null, // naam van de zojuist gerekruteerde verrader, voor de privé-onthulling
     lastVictim: null,
     lastBanished: null,
     lastBanishedVotes: null,
@@ -740,6 +753,16 @@
 
   function nonTraitorAlive(){
     return alivePlayers().filter(function(p){ return state.traitors.indexOf(p.name) === -1; });
+  }
+
+  // state.traitors kan namen van inmiddels vermoorde/verbannen verraders blijven bevatten
+  // (die worden nooit automatisch verwijderd) — gebruik dit overal waar het aantal
+  // NOG LEVENDE verraders telt, anders klopt de 1- of 2-verraders-logica niet meer
+  // nadat een verrader handmatig of via het spel is afgevallen.
+  function aliveTraitors(){
+    return state.traitors.filter(function(n){
+      return state.players.some(function(p){ return p.name === n && p.alive; });
+    });
   }
 
   function openTraitorsPhase(){
@@ -791,7 +814,11 @@
     else if(state.phase === 'forced') app.appendChild(renderForced());
     else if(state.phase === 'noVictim') app.appendChild(renderNoVictim());
     else if(state.phase === 'reveal') app.appendChild(renderReveal());
+    else if(state.phase === 'victimInstructions') app.appendChild(renderVictimInstructions());
     else if(state.phase === 'banReveal') app.appendChild(renderBanReveal());
+    else if(state.phase === 'recruitTraitor') app.appendChild(renderRecruitTraitor());
+    else if(state.phase === 'recruitHandoff') app.appendChild(renderRecruitHandoff());
+    else if(state.phase === 'recruitReveal') app.appendChild(renderRecruitReveal());
   }
 
   // render() is for LOCAL actions: repaint + persist (local cache + remote room).
@@ -1021,6 +1048,13 @@
     var fallBtn = el('button', {class:'action primary lg night-btn', text:'De nacht valt'});
     fallBtn.addEventListener('click', function(){
       state.night += 1;
+      // Nog maar 1 verrader over: deze nacht wordt niet gemoord, maar wordt er een
+      // nieuwe verrader gerekruteerd zodat er weer 2 verraders zijn.
+      if(aliveTraitors().length === 1){
+        state.phase = 'recruitTraitor';
+        render();
+        return;
+      }
       var stillEligible = nonTraitorAlive();
       var eligible = stillEligible.filter(function(p){ return state.shielded.indexOf(p.name) === -1; }).map(function(p){return p.name;});
       beginNight(eligible);
@@ -1028,6 +1062,91 @@
     bar.appendChild(fallBtn);
     screen.appendChild(bar);
 
+    return screen;
+  }
+
+  // ---------- RECRUIT TRAITOR: nog maar 1 verrader over, dus deze nacht geen moord ----------
+  function renderRecruitTraitor(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(cornerTraitorBtn());
+    screen.appendChild(el('h1', {text:'Nog maar 1 verrader over'}));
+    screen.appendChild(el('div', {class:'subtitle', text:'Deze nacht wordt niet gemoord — kies een nieuwe verrader'}));
+
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Tik op wie de nieuwe verrader wordt';
+    screen.appendChild(instr);
+
+    var candidates = nonTraitorAlive();
+    var grid = el('div', {class:'grid'});
+    candidates.forEach(function(p){
+      var isSel = state.recruitPick === p.name;
+      var tile = el('div', {class:'tile' + (isSel ? ' selected':'')});
+      tile.appendChild(document.createTextNode(p.name));
+      tile.addEventListener('click', function(){
+        state.recruitPick = p.name;
+        render();
+      });
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    if(state.recruitPick){
+      var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
+      confirmBtn.addEventListener('click', function(){
+        state.traitors.push(state.recruitPick);
+        state.newTraitorName = state.recruitPick;
+        state.recruitPick = null;
+        state.phase = 'recruitHandoff';
+        render();
+      });
+      bar.appendChild(confirmBtn);
+    }
+    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
+    back.addEventListener('click', function(){
+      state.recruitPick = null;
+      backToShieldPreserving();
+    });
+    bar.appendChild(back);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- RECRUIT HANDOFF: geef de iPad door voor je de naam onthult ----------
+  function renderRecruitHandoff(){
+    var screen = el('div', {class:'screen'});
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Geef de iPad door aan de nieuwe verrader';
+    screen.appendChild(instr);
+
+    var bar = el('div', {class:'bar'});
+    var revealBtn = el('button', {class:'action primary lg night-btn', text:'Onthul'});
+    revealBtn.addEventListener('click', function(){
+      state.phase = 'recruitReveal';
+      render();
+    });
+    bar.appendChild(revealBtn);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- RECRUIT REVEAL: privé — alleen de nieuwe verrader ziet dit ----------
+  function renderRecruitReveal(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-label', text:'Alleen voor jou'}));
+    wrap.appendChild(el('div', {class:'reveal-name', text: state.newTraitorName}));
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Jij bent vanaf nu een verrader'}));
+
+    var bar = el('div', {class:'bar'});
+    var nextBtn = el('button', {class:'action primary lg', text:'Volgende nacht'});
+    nextBtn.addEventListener('click', function(){
+      state.newTraitorName = null;
+      goToShieldPhase();
+    });
+    bar.appendChild(nextBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
     return screen;
   }
 
@@ -1169,7 +1288,7 @@
     instr.innerHTML = 'Tik op wie een <b>verrader</b> is';
     screen.appendChild(instr);
     var alive = alivePlayers();
-    screen.appendChild(el('div', {class:'badge-count', text: state.traitors.length + ' verrader(s) geselecteerd van ' + alive.length + ' levend'}));
+    screen.appendChild(el('div', {class:'badge-count', text: aliveTraitors().length + ' verrader(s) geselecteerd van ' + alive.length + ' levend'}));
 
     var grid = el('div', {class:'grid'});
     alive.forEach(function(p){
@@ -1201,6 +1320,9 @@
     state.remaining2 = [];
     state.round2Pick = null;
     state.round3Pick = null;
+    // Met precies 2 verraders is er geen ruimte voor 3 aparte rondes — dan kiest de
+    // eerste verrader meteen 2 kandidaten, en is ronde 3 de doorslaggevende stem.
+    state.round1TwoPick = false;
     if(eligibleNames.length === 0){
       state.phase = 'noVictim';
     } else if(eligibleNames.length === 1){
@@ -1209,6 +1331,7 @@
       state.remaining2 = eligibleNames.slice();
       state.phase = 'round3';
     } else {
+      state.round1TwoPick = aliveTraitors().length === 2;
       state.phase = 'round1';
     }
     render();
@@ -1229,11 +1352,12 @@
     return el('div', {class:'night-tag', text: 'Nacht ' + state.night});
   }
 
-  // ---------- ROUND 1: pick 3 candidates ----------
+  // ---------- ROUND 1: pick 3 candidates (of 2, bij precies 2 verraders) ----------
   function renderRound1(){
     var screen = el('div', {class:'screen'});
+    var pickCount = state.round1TwoPick ? 2 : 3;
     var instr = el('div', {class:'instruction'});
-    instr.textContent = 'Kies 3 slachtoffers';
+    instr.textContent = 'Kies ' + pickCount + ' slachtoffers';
     screen.appendChild(instr);
 
     var grid = el('div', {class:'grid'});
@@ -1246,7 +1370,7 @@
         if(idx !== -1){
           state.selected3.splice(idx,1);
         } else {
-          if(state.selected3.length >= 3) return;
+          if(state.selected3.length >= pickCount) return;
           state.selected3.push(name);
         }
         render();
@@ -1257,10 +1381,15 @@
 
     var bar = el('div', {class:'bar'});
     var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
-    confirmBtn.disabled = state.selected3.length !== 3;
+    confirmBtn.disabled = state.selected3.length !== pickCount;
     confirmBtn.addEventListener('click', function(){
-      if(state.selected3.length !== 3) return;
-      state.phase = 'round2';
+      if(state.selected3.length !== pickCount) return;
+      if(state.round1TwoPick){
+        state.remaining2 = state.selected3.slice();
+        state.phase = 'round3';
+      } else {
+        state.phase = 'round2';
+      }
       render();
     });
     bar.appendChild(confirmBtn);
@@ -1314,7 +1443,7 @@
   function renderRound3(){
     var screen = el('div', {class:'screen'});
     var instr = el('div', {class:'instruction'});
-    instr.textContent = 'Kies wie veilig blijft';
+    instr.textContent = state.round1TwoPick ? 'Breng de doorslaggevende stem uit — kies wie veilig blijft' : 'Kies wie veilig blijft';
     screen.appendChild(instr);
 
     var grid = el('div', {class:'grid compact'});
@@ -1344,7 +1473,8 @@
     var back = el('button', {class:'action ghost sm', text:'← Terug'});
     back.addEventListener('click', function(){
       state.round3Pick = null;
-      if(state.selected3.length){ state.phase = 'round2'; render(); }
+      if(state.round1TwoPick){ state.phase = 'round1'; render(); }
+      else if(state.selected3.length){ state.phase = 'round2'; render(); }
       else { backToShieldPreserving(); }
     });
     bar.appendChild(back);
@@ -1442,12 +1572,29 @@
     wrap.appendChild(el('div', {class:'reveal-sub', text: alive + ' spelers nog in leven'}));
 
     var bar = el('div', {class:'bar'});
-    var nextBtn = el('button', {class:'action primary', text:'Volgende nacht'});
-    nextBtn.addEventListener('click', function(){ goToShieldPhase(); });
+    var nextBtn = el('button', {class:'action primary', text:'Geef door aan ' + state.lastVictim});
+    nextBtn.addEventListener('click', function(){ state.phase = 'victimInstructions'; render(); });
     bar.appendChild(nextBtn);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
 
+    return screen;
+  }
+
+  // ---------- VICTIM INSTRUCTIONS (private — alleen voor wie net vermoord is) ----------
+  function renderVictimInstructions(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-label', text:'Alleen voor ' + state.lastVictim}));
+    wrap.appendChild(el('div', {class:'reveal-name', text:'Je bent vermoord'}));
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Verlaat zonder geluid te maken de tafel en volg Jacobine.'}));
+
+    var bar = el('div', {class:'bar'});
+    var nextBtn = el('button', {class:'action primary lg', text:'Volgende nacht'});
+    nextBtn.addEventListener('click', function(){ goToShieldPhase(); });
+    bar.appendChild(nextBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
     return screen;
   }
 
