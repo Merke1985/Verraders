@@ -80,6 +80,7 @@
     justify-content: center;
   }
   .tile{
+    position: relative;
     background: linear-gradient(160deg, var(--panel), var(--panel2));
     border: 1px solid var(--border);
     border-radius: 14px;
@@ -131,10 +132,18 @@
   }
   .tile.roster-dead{
     opacity: 0.5;
-    text-decoration: line-through;
     border-color: var(--border);
     background: linear-gradient(160deg, #15171f, #1a1e2c);
     color: var(--text-dim);
+  }
+  .dead-name{
+    text-decoration: line-through;
+  }
+  .dead-status-label{
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    opacity: 0.85;
   }
   .add-row{
     display:flex;
@@ -294,23 +303,32 @@
   .mode-btn{
     font-family: inherit;
     background: transparent;
-    border: none;
+    border: 1px solid var(--border);
     color: var(--text-dim);
     padding: 9px 20px;
     border-radius: 24px;
     font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
     letter-spacing: 0.5px;
   }
   .mode-btn.active-shield{
-    background: var(--gold);
-    color: #2a2413;
-    font-weight: bold;
+    background: var(--safe);
+    color: white;
   }
   .mode-btn.active-ban{
+    background: var(--gold);
+    color: #2a2413;
+  }
+  .mode-btn.active-night{
     background: var(--red);
     color: white;
-    font-weight: bold;
+    box-shadow: 0 0 12px var(--red-glow);
+  }
+  .night-btn{
+    background: var(--red);
+    color: white;
+    box-shadow: 0 0 12px var(--red-glow);
   }
   .corner-btn{
     position: fixed;
@@ -384,17 +402,29 @@
     background: linear-gradient(160deg, #2b1418, #3a191d);
     box-shadow: 0 0 14px var(--red-glow);
   }
+  .tile-icon{
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .tile-icon.icon-hidden{
+    visibility: hidden;
+  }
   .vote-row{
     display:flex;
     align-items:center;
-    gap: 8px;
+    gap: 18px;
+  }
+  .vote-row.vote-row-empty{
+    visibility: hidden;
   }
   .vote-badge{
     background: var(--red);
     color: white;
-    border-radius: 12px;
-    padding: 2px 11px;
-    font-size: 13px;
+    border-radius: 14px;
+    padding: 3px 13px;
+    font-size: 16px;
     font-weight: bold;
     min-width: 14px;
     text-align:center;
@@ -403,11 +433,11 @@
     background: var(--panel);
     border: 1px solid var(--border);
     color: var(--text-dim);
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 15px;
+    font-size: 18px;
     line-height: 1;
     display:flex;
     align-items:center;
@@ -420,6 +450,74 @@
     margin-top: 30px;
     text-decoration: underline;
     cursor: pointer;
+  }
+  .status-section{
+    width: 100%;
+    max-width: 640px;
+    margin-top: 28px;
+  }
+  .status-heading{
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .vote-list{
+    display:flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vote-list-row{
+    display:flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: 17px;
+  }
+  .vote-list-row.leader{
+    border-color: var(--gold);
+    box-shadow: 0 0 14px var(--gold-glow);
+    background: linear-gradient(160deg, #2a2413, #3a3018);
+    color: #f0e6b8;
+  }
+  .vote-list-row.dead{
+    opacity: 0.55;
+    justify-content: center;
+  }
+  .vote-list-count{
+    font-weight: bold;
+    font-size: 22px;
+    color: var(--red);
+  }
+  .votes-remaining{
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-bottom: 14px;
+    letter-spacing: 0.5px;
+  }
+  @keyframes votePulse{
+    0%{ transform: scale(1); box-shadow: 0 0 0 rgba(212,175,55,0); }
+    35%{ transform: scale(1.04); box-shadow: 0 0 26px var(--gold-glow); border-color: var(--gold); }
+    100%{ transform: scale(1); box-shadow: 0 0 0 rgba(212,175,55,0); }
+  }
+  .vote-list-row.vote-pulse{
+    animation: votePulse .7s ease;
+  }
+  .history-list{
+    display:flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .history-row{
+    font-size: 14px;
+    color: var(--text-dim);
+    text-align: center;
   }
   .badge-count{
     color: var(--text-dim);
@@ -480,6 +578,13 @@
   var syncStatus = 'offline'; // offline | connecting | online
   var lastAppliedUpdatedAt = null; // guards against re-applying our own echo
   var pollTimer = null;
+
+  // ---------- STATUS VIEW (2e, read-only pagina: live stemmen + spelersoverzicht) ----------
+  // Open dezelfde link met ?status=1 erachter om dit scherm te krijgen i.p.v. de begeleiderscherm.
+  var isStatusView = (function(){
+    try{ return new URLSearchParams(location.search).get('status') === '1'; }
+    catch(e){ return false; }
+  })();
 
   function makeRoomCode(){
     var code = '';
@@ -661,6 +766,7 @@
     round2Pick: null, // tentative "safe" tap in round2, awaiting confirm
     round3Pick: null, // tentative "safe" tap in round3, awaiting confirm
     lastVictim: null,
+    lastBanished: null,
     victimHistory: [] // list of {night, victim, type} — victim null = niemand vermoord
   };
 
@@ -718,8 +824,10 @@
   function paint(){
     var app = document.getElementById('app');
     app.innerHTML = '';
+    if(isStatusView){ app.appendChild(renderStatusDashboard()); return; }
     if(state.phase === 'setup') app.appendChild(renderSetup());
     else if(state.phase === 'shield') app.appendChild(renderShield());
+    else if(state.phase === 'nightHandoff') app.appendChild(renderNightHandoff());
     else if(state.phase === 'traitors') app.appendChild(renderTraitors());
     else if(state.phase === 'roster') app.appendChild(renderRoster());
     else if(state.phase === 'round1') app.appendChild(renderRound1());
@@ -728,6 +836,7 @@
     else if(state.phase === 'forced') app.appendChild(renderForced());
     else if(state.phase === 'noVictim') app.appendChild(renderNoVictim());
     else if(state.phase === 'reveal') app.appendChild(renderReveal());
+    else if(state.phase === 'banReveal') app.appendChild(renderBanReveal());
   }
 
   // render() is for LOCAL actions: repaint + persist (local cache + remote room).
@@ -805,24 +914,38 @@
     render();
   }
 
+  // Shared top menu (Schild geven / Nacht N / Verbannen) — used on both the
+  // shield/ban screen and the night-handoff screen, so it's never hidden.
+  function buildModeBar(){
+    var modeBar = el('div', {class:'mode-toggle'});
+    var shieldBtn = el('button', {class:'mode-btn' + (state.phase === 'shield' && state.shieldMode === 'schild' ? ' active-shield' : ''), text:'🛡 Schild geven'});
+    shieldBtn.addEventListener('click', function(){ state.shieldMode = 'schild'; state.phase = 'shield'; render(); });
+    modeBar.appendChild(shieldBtn);
+
+    var startNightBtn = el('button', {class:'mode-btn' + (state.phase === 'nightHandoff' ? ' active-night' : ''), text:'🗡 Vermoorden'});
+    startNightBtn.addEventListener('click', function(){
+      state.phase = 'nightHandoff';
+      render();
+    });
+    modeBar.appendChild(startNightBtn);
+
+    var banBtn = el('button', {class:'mode-btn' + (state.phase === 'shield' && state.shieldMode === 'verbannen' ? ' active-ban' : ''), text:'⚔ Verbannen'});
+    banBtn.addEventListener('click', function(){ state.shieldMode = 'verbannen'; state.phase = 'shield'; render(); });
+    modeBar.appendChild(banBtn);
+    return modeBar;
+  }
+
   function renderShield(){
     var screen = el('div', {class:'screen'});
     screen.appendChild(cornerTraitorBtn());
     screen.appendChild(el('h1', {text:'Begeleider'}));
     screen.appendChild(el('div', {class:'subtitle', text:'Voorbereiding op Nacht ' + (state.night + 1)}));
 
-    var modeBar = el('div', {class:'mode-toggle'});
-    var shieldBtn = el('button', {class:'mode-btn' + (state.shieldMode === 'schild' ? ' active-shield' : ''), text:'🛡 Schild geven'});
-    shieldBtn.addEventListener('click', function(){ state.shieldMode = 'schild'; render(); });
-    var banBtn = el('button', {class:'mode-btn' + (state.shieldMode === 'verbannen' ? ' active-ban' : ''), text:'⚔ Verbannen'});
-    banBtn.addEventListener('click', function(){ state.shieldMode = 'verbannen'; render(); });
-    modeBar.appendChild(shieldBtn);
-    modeBar.appendChild(banBtn);
-    screen.appendChild(modeBar);
+    screen.appendChild(buildModeBar());
 
     var instr = el('div', {class:'instruction'});
     if(state.shieldMode === 'schild'){
-      instr.innerHTML = 'Tik op iedereen met een <b>schild</b> — die vallen deze nacht buiten beeld';
+      instr.textContent = 'Tik op iedereen met een schild';
     } else {
       instr.innerHTML = 'Tik op een naam om er een <b>stem</b> aan te geven';
     }
@@ -839,7 +962,9 @@
     alive.forEach(function(p){
       if(state.shieldMode === 'schild'){
         var isShielded = state.shielded.indexOf(p.name) !== -1;
-        var tile = el('div', {class:'tile' + (isShielded ? ' shielded':'')}, [document.createTextNode((isShielded ? '🛡 ' : '') + p.name)]);
+        var tile = el('div', {class:'tile' + (isShielded ? ' shielded':'')});
+        tile.appendChild(el('span', {class:'tile-icon' + (isShielded ? '' : ' icon-hidden'), text:'🛡'}));
+        tile.appendChild(document.createTextNode(p.name));
         tile.addEventListener('click', function(){
           var idx = state.shielded.indexOf(p.name);
           if(idx !== -1) state.shielded.splice(idx,1);
@@ -849,22 +974,20 @@
         grid.appendChild(tile);
       } else {
         var voteCount = state.votes[p.name] || 0;
-        var tile = el('div', {class:'tile tile-stack' + (voteCount > 0 ? ' voted' : '')});
-        tile.appendChild(el('div', {text: p.name}));
-        if(voteCount > 0){
-          var row = el('div', {class:'vote-row'});
-          row.appendChild(el('span', {class:'vote-badge', text: String(voteCount)}));
-          var minus = el('button', {class:'vote-minus', text:'−'});
-          minus.addEventListener('click', function(ev){
-            ev.stopPropagation();
-            var v = (state.votes[p.name] || 0) - 1;
-            if(v <= 0) delete state.votes[p.name];
-            else state.votes[p.name] = v;
-            render();
-          });
-          row.appendChild(minus);
-          tile.appendChild(row);
-        }
+        var tile = el('div', {class:'tile' + (voteCount > 0 ? ' voted' : '')});
+        tile.appendChild(el('span', {text: p.name}));
+        var row = el('div', {class:'vote-row' + (voteCount > 0 ? '' : ' vote-row-empty')});
+        row.appendChild(el('span', {class:'vote-badge', text: String(voteCount)}));
+        var minus = el('button', {class:'vote-minus', text:'−'});
+        minus.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          var v = (state.votes[p.name] || 0) - 1;
+          if(v <= 0) delete state.votes[p.name];
+          else state.votes[p.name] = v;
+          render();
+        });
+        row.appendChild(minus);
+        tile.appendChild(row);
         tile.addEventListener('click', function(){
           state.votes[p.name] = (state.votes[p.name] || 0) + 1;
           render();
@@ -875,16 +998,7 @@
     screen.appendChild(grid);
 
     var bar = el('div', {class:'bar'});
-    if(state.shieldMode === 'schild'){
-      var startNightBtn = el('button', {class:'action primary', text:'Nacht ' + (state.night + 1)});
-      startNightBtn.addEventListener('click', function(){
-        state.night += 1;
-        var stillEligible = nonTraitorAlive();
-        var eligible = stillEligible.filter(function(p){ return state.shielded.indexOf(p.name) === -1; }).map(function(p){return p.name;});
-        beginNight(eligible);
-      });
-      bar.appendChild(startNightBtn);
-    } else {
+    if(state.shieldMode !== 'schild'){
       var banExecBtn = el('button', {class:'action primary', text:'Verban wie de meeste stemmen heeft'});
       banExecBtn.addEventListener('click', function(){
         var names = Object.keys(state.votes).filter(function(n){ return state.votes[n] > 0; });
@@ -896,12 +1010,13 @@
           return;
         }
         var winner = top[0];
-        if(!confirm(winner + ' verbannen met ' + max + ' stem' + (max === 1 ? '' : 'men') + '? Diegene ligt dan uit het spel.')) return;
-        state.players.forEach(function(p){ if(p.name === winner) p.alive = false; });
+        state.players.forEach(function(p){ if(p.name === winner){ p.alive = false; p.deathType = 'ban'; } });
         var sIdx = state.shielded.indexOf(winner);
         if(sIdx !== -1) state.shielded.splice(sIdx,1);
         state.victimHistory.push({night: state.night, victim: winner, type:'ban'});
         state.votes = {};
+        state.lastBanished = winner;
+        state.phase = 'banReveal';
         render();
       });
       bar.appendChild(banExecBtn);
@@ -914,6 +1029,33 @@
     var editLink = el('div', {class:'small-link', text:'Namenlijst bewerken'});
     editLink.addEventListener('click', function(){ openRosterPhase(); });
     screen.appendChild(editLink);
+
+    return screen;
+  }
+
+  // ---------- NIGHT HANDOFF (blindfold ritual: pass the iPad before the murder screen shows) ----------
+  function renderNightHandoff(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(cornerTraitorBtn());
+    screen.appendChild(el('h1', {text:'Begeleider'}));
+    screen.appendChild(el('div', {class:'subtitle', text:'Voorbereiding op Nacht ' + (state.night + 1)}));
+
+    screen.appendChild(buildModeBar());
+
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Druk op de knop en laat de verrader kiezen';
+    screen.appendChild(instr);
+
+    var bar = el('div', {class:'bar'});
+    var fallBtn = el('button', {class:'action primary lg night-btn', text:'De nacht valt'});
+    fallBtn.addEventListener('click', function(){
+      state.night += 1;
+      var stillEligible = nonTraitorAlive();
+      var eligible = stillEligible.filter(function(p){ return state.shielded.indexOf(p.name) === -1; }).map(function(p){return p.name;});
+      beginNight(eligible);
+    });
+    bar.appendChild(fallBtn);
+    screen.appendChild(bar);
 
     return screen;
   }
@@ -938,12 +1080,12 @@
     }
 
     var instr = el('div', {class:'instruction'});
-    if(hasDead){
-      instr.innerHTML = 'Tik op een <b>afgevallen</b> naam om die terug in het spel te zetten';
-    } else if(mode === 'setup'){
+    if(mode === 'setup'){
       instr.textContent = 'Voeg spelers toe met de + en druk op Start spel';
+    } else if(hasDead){
+      instr.textContent = 'Tik op een afgevallen naam om terug te zetten, of corrigeer met ⚔ / 🗡';
     } else {
-      instr.textContent = 'Iedereen doet nog mee';
+      instr.textContent = 'Corrigeer een fout met ⚔ verbannen of 🗡 vermoorden';
     }
     screen.appendChild(instr);
 
@@ -964,12 +1106,42 @@
           tile.appendChild(row);
           grid.appendChild(tile);
         } else {
-          grid.appendChild(el('div', {class:'tile'}, [document.createTextNode(p.name)]));
+          var aliveTile = el('div', {class:'tile tile-stack'});
+          aliveTile.appendChild(el('div', {text: p.name}));
+          var actionRow = el('div', {class:'vote-row'});
+          var banBtn = el('button', {class:'vote-minus', text:'⚔'});
+          banBtn.title = 'Handmatig verbannen';
+          banBtn.addEventListener('click', function(ev){
+            ev.stopPropagation();
+            if(!confirm(p.name + ' handmatig verbannen? Dit corrigeert een fout — diegene ligt dan uit het spel.')) return;
+            p.alive = false;
+            p.deathType = 'ban';
+            state.victimHistory.push({night: state.night, victim: p.name, type:'ban'});
+            render();
+          });
+          var killBtn = el('button', {class:'vote-minus', text:'🗡'});
+          killBtn.title = 'Handmatig vermoorden';
+          killBtn.addEventListener('click', function(ev){
+            ev.stopPropagation();
+            if(!confirm(p.name + ' handmatig vermoorden? Dit corrigeert een fout — diegene ligt dan uit het spel.')) return;
+            p.alive = false;
+            p.deathType = 'murder';
+            state.victimHistory.push({night: state.night, victim: p.name, type:'murder'});
+            render();
+          });
+          actionRow.appendChild(banBtn);
+          actionRow.appendChild(killBtn);
+          aliveTile.appendChild(actionRow);
+          grid.appendChild(aliveTile);
         }
       } else {
-        var deadTile = el('div', {class:'tile roster-dead'}, [document.createTextNode(p.name)]);
+        var statusLabel = p.deathType === 'ban' ? 'verbannen' : (p.deathType === 'murder' ? 'vermoord' : 'afgevallen');
+        var deadTile = el('div', {class:'tile roster-dead tile-stack'});
+        deadTile.appendChild(el('div', {class:'dead-name', text: p.name}));
+        deadTile.appendChild(el('div', {class:'dead-status-label', text: statusLabel}));
         deadTile.addEventListener('click', function(){
           p.alive = true;
+          p.deathType = null;
           render();
         });
         grid.appendChild(deadTile);
@@ -1028,7 +1200,9 @@
     var grid = el('div', {class:'grid'});
     alive.forEach(function(p){
       var isTraitor = state.traitors.indexOf(p.name) !== -1;
-      var tile = el('div', {class:'tile' + (isTraitor ? ' traitor-marked':'')}, [document.createTextNode((isTraitor ? '🗡 ' : '') + p.name)]);
+      var tile = el('div', {class:'tile' + (isTraitor ? ' traitor-marked':'')});
+      tile.appendChild(el('span', {class:'tile-icon' + (isTraitor ? '' : ' icon-hidden'), text:'🗡'}));
+      tile.appendChild(document.createTextNode(p.name));
       tile.addEventListener('click', function(){
         var idx = state.traitors.indexOf(p.name);
         if(idx !== -1) state.traitors.splice(idx,1);
@@ -1107,7 +1281,7 @@
     screen.appendChild(grid);
 
     var bar = el('div', {class:'bar'});
-    var confirmBtn = el('button', {class:'action primary lg', text:'Geef door'});
+    var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
     confirmBtn.disabled = state.selected3.length !== 3;
     confirmBtn.addEventListener('click', function(){
       if(state.selected3.length !== 3) return;
@@ -1246,12 +1420,30 @@
 
   function markVictim(name){
     state.players.forEach(function(p){
-      if(p.name === name) p.alive = false;
+      if(p.name === name){ p.alive = false; p.deathType = 'murder'; }
     });
     state.victimHistory.push({night: state.night, victim: name, type:'murder'});
     state.lastVictim = name;
     state.phase = 'reveal';
     render();
+  }
+
+  // ---------- BAN REVEAL ----------
+  function renderBanReveal(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-label', text:'is verbannen'}));
+    wrap.appendChild(el('div', {class:'reveal-name', text: state.lastBanished}));
+    var alive = alivePlayers().length;
+    wrap.appendChild(el('div', {class:'reveal-sub', text: alive + ' spelers nog in het spel'}));
+
+    var bar = el('div', {class:'bar'});
+    var nextBtn = el('button', {class:'action primary lg', text:'Terug naar begeleider'});
+    nextBtn.addEventListener('click', function(){ state.phase = 'shield'; render(); });
+    bar.appendChild(nextBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
   }
 
   // ---------- REVEAL ----------
@@ -1267,23 +1459,121 @@
     var nextBtn = el('button', {class:'action primary', text:'Volgende nacht'});
     nextBtn.addEventListener('click', function(){ goToShieldPhase(); });
     bar.appendChild(nextBtn);
-    var resetBtn = el('button', {class:'action ghost', text:'Spel resetten'});
-    resetBtn.addEventListener('click', function(){
-      if(confirm('Alle spelers weer tot leven wekken en opnieuw beginnen?')){
-        state.players.forEach(function(p){ p.alive = true; });
-        state.victimHistory = [];
-        state.night = 0;
-        state.phase = 'setup';
-        render();
-      }
-    });
-    bar.appendChild(resetBtn);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
 
-    var editLink = el('div', {class:'small-link', text:'Namenlijst bewerken'});
-    editLink.addEventListener('click', function(){ openRosterPhase(); });
-    screen.appendChild(editLink);
+    return screen;
+  }
+
+  // ---------- STATUS DASHBOARD (read-only 2e pagina: ?status=1) ----------
+  // Nooit state.traitors tonen hier — verraders blijven ook op dit scherm geheim.
+  // Onthoudt de vorige stemstand tussen twee tekeningen van het statusscherm,
+  // zodat we kunnen zien welke naam er sinds de vorige update bij kreeg (voor het pulse-effect).
+  var lastSeenVoteCounts = {};
+
+  function renderStatusDashboard(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(el('h1', {text:'Status'}));
+
+    if(state.players.length === 0){
+      screen.appendChild(el('div', {class:'subtitle', text:'Wachten tot het spel begint...'}));
+      return screen;
+    }
+
+    var isVoting = state.phase === 'shield' && state.shieldMode === 'verbannen';
+
+    var phaseLabel;
+    if(state.phase === 'shield'){
+      phaseLabel = isVoting
+        ? 'Er wordt gestemd voor verbanning'
+        : 'Schilden worden verdeeld — voorbereiding op Nacht ' + (state.night + 1);
+    } else if(state.phase === 'nightHandoff'){
+      phaseLabel = 'De nacht valt zo — Nacht ' + (state.night + 1);
+    } else if(state.phase === 'round1' || state.phase === 'round2' || state.phase === 'round3' || state.phase === 'forced' || state.phase === 'noVictim'){
+      phaseLabel = 'Nacht ' + state.night + ' is bezig...';
+    } else if(state.phase === 'reveal'){
+      phaseLabel = 'Nacht ' + state.night + ' is voorbij';
+    } else if(state.phase === 'banReveal'){
+      phaseLabel = 'Er is zojuist iemand verbannen';
+    } else {
+      phaseLabel = 'Het spel wordt voorbereid...';
+    }
+    screen.appendChild(el('div', {class:'subtitle', text: phaseLabel}));
+
+    // Tijdens het stemmen: alléén de kandidaten, met live stemeffect — geen namenlijst/geschiedenis erbij.
+    if(isVoting){
+      var aliveForVotes = alivePlayers().slice();
+      var totalCast = aliveForVotes.reduce(function(sum, p){ return sum + (state.votes[p.name] || 0); }, 0);
+      if(totalCast === 0) lastSeenVoteCounts = {}; // nieuwe stemronde begonnen — reset het pulse-geheugen
+
+      aliveForVotes.sort(function(a, b){
+        var va = state.votes[a.name] || 0, vb = state.votes[b.name] || 0;
+        if(vb !== va) return vb - va;
+        return a.name.localeCompare(b.name);
+      });
+      var maxVotes = 0;
+      aliveForVotes.forEach(function(p){ maxVotes = Math.max(maxVotes, state.votes[p.name] || 0); });
+      var remaining = Math.max(0, aliveForVotes.length - totalCast);
+
+      var voteSection = el('div', {class:'status-section'});
+      voteSection.appendChild(el('div', {class:'status-heading', text:'Kandidaten'}));
+      voteSection.appendChild(el('div', {class:'votes-remaining', text: remaining + ' van de ' + aliveForVotes.length + ' stemmen nog te vergeven'}));
+
+      var voteList = el('div', {class:'vote-list'});
+      aliveForVotes.forEach(function(p){
+        var v = state.votes[p.name] || 0;
+        var isLeader = v > 0 && v === maxVotes;
+        var justGotVote = v > (lastSeenVoteCounts[p.name] || 0);
+        var row = el('div', {class:'vote-list-row' + (isLeader ? ' leader' : '') + (justGotVote ? ' vote-pulse' : '')});
+        row.appendChild(el('span', {class:'vote-list-name', text: (isLeader ? '👑 ' : '') + p.name}));
+        row.appendChild(el('span', {class:'vote-list-count', text: String(v)}));
+        voteList.appendChild(row);
+        lastSeenVoteCounts[p.name] = v;
+      });
+      voteSection.appendChild(voteList);
+      screen.appendChild(voteSection);
+      return screen;
+    }
+
+    // Alle andere schermen: volledige kandidatenlijst met doodshoofd (vermoord) / ⚔️ (verbannen), plus geschiedenis.
+    var rosterSection = el('div', {class:'status-section'});
+    rosterSection.appendChild(el('div', {class:'status-heading', text:'Kandidaten'}));
+    var list = el('div', {class:'vote-list'});
+    state.players.forEach(function(p){
+      if(p.alive){
+        var isShielded = state.shielded.indexOf(p.name) !== -1;
+        var row = el('div', {class:'vote-list-row'});
+        row.appendChild(el('span', {class:'vote-list-name', text: (isShielded ? '🛡 ' : '') + p.name}));
+        list.appendChild(row);
+      } else {
+        var icon = p.deathType === 'ban' ? '⚔️' : '💀';
+        var row = el('div', {class:'vote-list-row dead'});
+        row.appendChild(el('span', {class:'vote-list-name dead-name', text: icon + ' ' + p.name}));
+        list.appendChild(row);
+      }
+    });
+    rosterSection.appendChild(list);
+    screen.appendChild(rosterSection);
+
+    // Geschiedenis — per ronde wie vermoord/verbannen is
+    if(state.victimHistory.length){
+      var histSection = el('div', {class:'status-section'});
+      histSection.appendChild(el('div', {class:'status-heading', text:'Geschiedenis'}));
+      var histList = el('div', {class:'history-list'});
+      state.victimHistory.forEach(function(entry){
+        var line;
+        if(!entry.victim){
+          line = 'Nacht ' + entry.night + ' — niemand vermoord';
+        } else if(entry.type === 'ban'){
+          line = 'Nacht ' + entry.night + ' — ⚔️ ' + entry.victim + ' verbannen';
+        } else {
+          line = 'Nacht ' + entry.night + ' — 💀 ' + entry.victim + ' vermoord';
+        }
+        histList.appendChild(el('div', {class:'history-row', text: line}));
+      });
+      histSection.appendChild(histList);
+      screen.appendChild(histSection);
+    }
 
     return screen;
   }
@@ -1291,22 +1581,24 @@
   // ---------- CONNECT (pick / join a room so 2 iPads can sync) ----------
   function renderConnect(){
     var screen = el('div', {class:'screen'});
-    screen.appendChild(el('h1', {text:'De Verraders'}));
-    screen.appendChild(el('div', {class:'subtitle', text: supabaseClient ? 'Verbind deze iPad met een spel' : '⚠️ Kon niet met het synchronisatie-systeem verbinden — deze iPad speelt lokaal'}));
+    screen.appendChild(el('h1', {text: isStatusView ? 'De Verraders — Status' : 'De Verraders'}));
+    screen.appendChild(el('div', {class:'subtitle', text: supabaseClient ? (isStatusView ? 'Volg een lopend spel' : 'Verbind deze iPad met een spel') : '⚠️ Kon niet met het synchronisatie-systeem verbinden — deze iPad speelt lokaal'}));
 
     var instr = el('div', {class:'instruction'});
-    instr.textContent = 'Start een nieuw spel, of vul de kamercode van de andere iPad in';
+    instr.textContent = isStatusView ? 'Vul de kamercode van het lopende spel in' : 'Start een nieuw spel, of vul de kamercode van de andere iPad in';
     screen.appendChild(instr);
 
-    var bar1 = el('div', {class:'bar'});
-    var newBtn = el('button', {class:'action primary lg', text:'Nieuw spel starten'});
-    newBtn.addEventListener('click', function(){
-      connectToRoom(makeRoomCode(), false);
-    });
-    bar1.appendChild(newBtn);
-    screen.appendChild(bar1);
+    if(!isStatusView){
+      var bar1 = el('div', {class:'bar'});
+      var newBtn = el('button', {class:'action primary lg', text:'Nieuw spel starten'});
+      newBtn.addEventListener('click', function(){
+        connectToRoom(makeRoomCode(), false);
+      });
+      bar1.appendChild(newBtn);
+      screen.appendChild(bar1);
 
-    screen.appendChild(el('div', {class:'connect-divider', text:'of'}));
+      screen.appendChild(el('div', {class:'connect-divider', text:'of'}));
+    }
 
     var addRow = el('div', {class:'add-row'});
     var input = el('input', {class:'text-input', type:'text', placeholder:'Kamercode', maxlength:'8'});
