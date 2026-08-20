@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>De Verraders — Slachtoffer kiezen</title>
+<style>
+  :root{
+    --bg: #0b0d14;
+    --bg2: #12151f;
+    --panel: #1a1e2c;
+    --panel2: #232939;
+    --border: #2f3549;
+    --red: #c1272d;
+    --red-dim: #6e1b1f;
+    --red-glow: rgba(193,39,45,0.45);
+    --gold: #d4af37;
+    --gold-glow: rgba(212,175,55,0.4);
+    --text: #f2ecdf;
+    --text-dim: #9aa0b4;
+    --safe: #3f9d5e;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body{
+    margin:0; padding:0; height:100%;
+    background: radial-gradient(ellipse at top, var(--bg2), var(--bg) 70%);
+    color: var(--text);
+    font-family: 'Georgia', 'Iowan Old Style', 'Palatino', serif;
+    overflow-x: hidden;
+  }
+  .screen{
+    min-height: 100dvh;
+    display:flex; flex-direction:column; align-items:center;
+    padding: 24px 20px 40px;
+  }
+  h1{
+    font-size: clamp(22px, 3.2vw, 34px);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    text-align:center;
+    margin: 8px 0 4px;
+    text-shadow: 0 0 18px rgba(212,175,55,0.35);
+  }
+  .subtitle{
+    color: var(--text-dim);
+    font-size: 14px;
+    letter-spacing: 1px;
+    margin-bottom: 18px;
+    text-align:center;
+  }
+  .instruction{
+    font-size: clamp(18px, 2.6vw, 26px);
+    text-align:center;
+    margin: 6px 0 22px;
+    color: var(--text);
+    min-height: 34px;
+  }
+  .instruction b{ color: var(--gold); }
+  .step-dots{ display:flex; gap:10px; margin-bottom: 6px; }
+  .dot{
+    width:10px; height:10px; border-radius:50%;
+    background: var(--border);
+    transition: all .3s ease;
+  }
+  .dot.active{ background: var(--red); box-shadow: 0 0 10px var(--red-glow); }
+  .dot.done{ background: var(--gold); }
+
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 10px;
+  }
+  .grid.compact{
+    display:flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .tile{
+    background: linear-gradient(160deg, var(--panel), var(--panel2));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 10px;
+    text-align:center;
+    font-size: clamp(15px, 2vw, 19px);
+    cursor:pointer;
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+    min-height: 64px;
+    flex: 0 1 160px;
+    display:flex; align-items:center; justify-content:center;
+    word-break: break-word;
+    gap: 6px;
+  }
+  .tile:active{ transform: scale(0.95); }
+  .tile.selected{
+    border-color: var(--red);
+    background: linear-gradient(160deg, #2b1418, #3a191d);
+    box-shadow: 0 0 18px var(--red-glow);
+    color: #ffdede;
+  }
+  .tile.dimmed{ opacity: 0.28; pointer-events:none; filter: grayscale(0.6); }
+  .tile.dead{ opacity: 0.18; pointer-events:none; text-decoration: line-through; }
+  .tile.candidate{
+    border-color: var(--gold);
+    background: linear-gradient(160deg, #2a2413, #3a3018);
+  }
+  .tile.shielded{
+    border-color: var(--gold);
+    background: linear-gradient(160deg, #21281a, #2b3420);
+    box-shadow: 0 0 14px var(--gold-glow);
+    color: #f0e6b8;
+  }
+  .tile.excluded{
+    opacity: 0.35;
+    pointer-events:none;
+  }
+  .tile.safe-picked{
+    border-color: var(--safe);
+    background: linear-gradient(160deg, #123320, #16452b);
+    box-shadow: 0 0 18px rgba(63,157,94,0.5);
+    color: #c9f5d6;
+  }
+  .tile.not-safe{
+    border-color: var(--red);
+    background: linear-gradient(160deg, #2b1418, #3a191d);
+    box-shadow: 0 0 14px var(--red-glow);
+    color: #ffb3b3;
+  }
+  .tile.roster-dead{
+    opacity: 0.5;
+    text-decoration: line-through;
+    border-color: var(--border);
+    background: linear-gradient(160deg, #15171f, #1a1e2c);
+    color: var(--text-dim);
+  }
+  .add-row{
+    display:flex;
+    gap: 10px;
+    align-items:center;
+    margin-top: 26px;
+  }
+  input.text-input{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 12px 16px;
+    font-size: 16px;
+    font-family: inherit;
+    width: 220px;
+  }
+  .plus-btn{
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: var(--gold);
+    color: #2a2413;
+    border: none;
+    font-size: 22px;
+    font-weight: bold;
+    cursor: pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .bar{
+    display:flex; gap:12px; margin-top: 26px; flex-wrap:wrap; justify-content:center;
+  }
+  button.action{
+    font-family: inherit;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-size: 15px;
+    cursor:pointer;
+    letter-spacing: 0.5px;
+  }
+  button.action:hover{ border-color: var(--gold); }
+  button.action.primary{
+    background: var(--red);
+    border-color: var(--red);
+    color: white;
+  }
+  button.action.gold{
+    background: var(--gold);
+    border-color: var(--gold);
+    color: #2a2413;
+    font-weight: bold;
+  }
+  button.action.primary:disabled{
+    background: var(--border);
+    border-color: var(--border);
+    color: var(--text-dim);
+    cursor: not-allowed;
+  }
+  button.action.ghost{ background: transparent; }
+  button.action.lg{
+    font-size: 19px;
+    padding: 18px 34px;
+    border-radius: 14px;
+  }
+  button.action.sm{
+    font-size: 12px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    opacity: 0.7;
+  }
+
+  textarea{
+    width: 100%; max-width: 520px; height: 260px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    padding: 14px;
+    font-size: 16px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .hint{ color: var(--text-dim); font-size: 13px; margin-top: 8px; max-width: 480px; text-align:center; }
+
+  .reveal-wrap{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height: 60vh; width:100%;
+  }
+  .reveal-label{ color: var(--text-dim); letter-spacing: 3px; font-size: 15px; text-transform: uppercase; margin-bottom: 10px;}
+  .reveal-name{
+    font-size: clamp(38px, 8vw, 84px);
+    color: var(--red);
+    text-shadow: 0 0 30px var(--red-glow);
+    text-align:center;
+    animation: pulse-in .5s ease;
+    margin: 6px 0 4px;
+  }
+  .reveal-sub{ color: var(--text-dim); font-size: 16px; margin-bottom: 30px; }
+  @keyframes pulse-in{
+    0%{ transform: scale(0.7); opacity:0; }
+    60%{ transform: scale(1.08); opacity:1; }
+    100%{ transform: scale(1); }
+  }
+
+  .footer-log{
+    margin-top: 40px;
+    color: var(--text-dim);
+    font-size: 13px;
+    text-align:center;
+    max-width: 600px;
+    line-height: 1.8;
+  }
+  .footer-log .victim-chip{
+    display:inline-block;
+    background: var(--panel2);
+    border: 1px solid var(--red-dim);
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin: 3px;
+    color: #e6b8ba;
+  }
+  .footer-log .none-chip{
+    display:inline-block;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin: 3px;
+    color: var(--text-dim);
+  }
+  .footer-log .ban-chip{
+    display:inline-block;
+    background: var(--panel2);
+    border: 1px solid var(--gold);
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin: 3px;
+    color: var(--gold);
+  }
+  .mode-toggle{
+    display:flex;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    padding: 5px;
+    margin-bottom: 20px;
+  }
+  .mode-btn{
+    font-family: inherit;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 9px 20px;
+    border-radius: 24px;
+    font-size: 14px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  .mode-btn.active-shield{
+    background: var(--gold);
+    color: #2a2413;
+    font-weight: bold;
+  }
+  .mode-btn.active-ban{
+    background: var(--red);
+    color: white;
+    font-weight: bold;
+  }
+  .corner-btn{
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 9px 18px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    z-index: 20;
+  }
+  .corner-btn:hover{ border-color: var(--red); color: var(--text); }
+  #room-indicator{
+    position: fixed;
+    bottom: 12px;
+    left: 14px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    z-index: 20;
+    display:flex;
+    align-items:center;
+    gap: 10px;
+  }
+  #room-indicator .leave-link{
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .dot-status{
+    display:inline-block;
+    width:8px; height:8px;
+    border-radius:50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .dot-status.online{ background: var(--safe); box-shadow: 0 0 6px rgba(63,157,94,0.6); }
+  .dot-status.offline{ background: var(--red); box-shadow: 0 0 6px var(--red-glow); }
+  .dot-status.connecting{ background: var(--gold); box-shadow: 0 0 6px var(--gold-glow); }
+  .room-code-big{
+    font-size: 44px;
+    letter-spacing: 8px;
+    color: var(--gold);
+    text-align:center;
+    margin: 10px 0 6px;
+    font-weight:bold;
+  }
+  .connect-divider{
+    color: var(--text-dim);
+    font-size: 13px;
+    margin: 28px 0;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .tile.traitor-marked{
+    border-color: var(--red);
+    background: linear-gradient(160deg, #2b1418, #3a191d);
+    box-shadow: 0 0 14px var(--red-glow);
+    color: #ffb3b3;
+  }
+  .tile.tile-stack{
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tile.voted{
+    border-color: var(--red);
+    background: linear-gradient(160deg, #2b1418, #3a191d);
+    box-shadow: 0 0 14px var(--red-glow);
+  }
+  .vote-row{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+  }
+  .vote-badge{
+    background: var(--red);
+    color: white;
+    border-radius: 12px;
+    padding: 2px 11px;
+    font-size: 13px;
+    font-weight: bold;
+    min-width: 14px;
+    text-align:center;
+  }
+  .vote-minus{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 0;
+  }
+  .small-link{
+    color: var(--text-dim);
+    font-size: 12px;
+    margin-top: 30px;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .badge-count{
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-top: -8px;
+    margin-bottom: 20px;
+  }
+  .warn{
+    background: var(--panel2);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    max-width: 480px;
+    text-align:center;
+    margin-bottom: 16px;
+  }
+  .night-tag{
+    color: var(--text-dim);
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+<div id="room-indicator"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+  var DEFAULT_NAMES = [
+    'Johan', 'Annelies', 'Nieske', 'Hanne', 'Elsbeth K.',
+    'Elsbeth S.', 'Jurjen', 'Daan', 'Joren', 'Lize',
+    'Siem', 'Arjen', 'Niels', 'Koen', 'Joost',
+    'Geertje', 'Nick'
+  ];
+
+  // ---------- SYNC (2 iPads, live, via Supabase) ----------
+  var SUPABASE_URL = 'https://gtdzuuvlluyofkvbpusx.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0ZHp1dXZsbHV5b2ZrdmJwdXN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwNTUwMjAsImV4cCI6MjA2NzYzMTAyMH0.DcHwCLuyyVJvs0Ugpr7bE0Az5_tkES4kE_P0SUFOyus';
+  var ROOM_TABLE = 'verraders_game_state';
+  var ROOM_KEY = 'verraders-room-code';
+  var ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0/I/1 — easy to read aloud
+
+  var supabaseClient = (window.supabase && window.supabase.createClient)
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
+  var roomCode = null;
+  var realtimeChannel = null;
+  var syncStatus = 'offline'; // offline | connecting | online
+
+  function makeRoomCode(){
+    var code = '';
+    for(var i=0;i<5;i++){ code += ROOM_ALPHABET[Math.floor(Math.random()*ROOM_ALPHABET.length)]; }
+    return code;
+  }
+
+  function loadRoomCode(){
+    try{ return localStorage.getItem(ROOM_KEY); } catch(e){ return null; }
+  }
+  function saveRoomCode(code){
+    try{ localStorage.setItem(ROOM_KEY, code); } catch(e){}
+  }
+  function clearRoomCode(){
+    try{ localStorage.removeItem(ROOM_KEY); } catch(e){}
+  }
+
+  function setSyncStatus(s){
+    syncStatus = s;
+    updateRoomIndicator();
+  }
+
+  function updateRoomIndicator(){
+    var box = document.getElementById('room-indicator');
+    if(!box) return;
+    box.innerHTML = '';
+    if(!roomCode){ return; }
+    var dotClass = syncStatus === 'online' ? 'online' : (syncStatus === 'connecting' ? 'connecting' : 'offline');
+    var label = syncStatus === 'online' ? 'verbonden' : (syncStatus === 'connecting' ? 'verbinden…' : 'offline (lokaal)');
+    var span = document.createElement('span');
+    var dot = document.createElement('span');
+    dot.className = 'dot-status ' + dotClass;
+    span.appendChild(dot);
+    span.appendChild(document.createTextNode('Kamer ' + roomCode + ' — ' + label));
+    box.appendChild(span);
+    var leave = document.createElement('span');
+    leave.className = 'leave-link';
+    leave.textContent = 'andere kamer';
+    leave.addEventListener('click', function(){
+      if(confirm('Deze iPad loskoppelen van kamer ' + roomCode + '? Het spel zelf blijft bestaan.')){
+        clearRoomCode();
+        location.reload();
+      }
+    });
+    box.appendChild(leave);
+  }
+
+  function subscribeRealtime(){
+    if(!supabaseClient || !roomCode) return;
+    if(realtimeChannel){ supabaseClient.removeChannel(realtimeChannel); }
+    setSyncStatus('connecting');
+    realtimeChannel = supabaseClient
+      .channel('room-' + roomCode)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: ROOM_TABLE, filter: 'room_code=eq.' + roomCode
+      }, function(payload){
+        if(payload.new && payload.new.state){
+          var incoming = payload.new.state;
+          if(typeof incoming === 'string'){
+            try{ incoming = JSON.parse(incoming); } catch(e){ incoming = null; }
+          }
+          if(incoming){
+            state = incoming;
+            persistLocalOnly();
+            paint();
+          }
+        }
+      })
+      .subscribe(function(status){
+        if(status === 'SUBSCRIBED') setSyncStatus('online');
+        else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setSyncStatus('offline');
+      });
+  }
+
+  function refreshFromRemote(){
+    if(!supabaseClient || !roomCode) return;
+    supabaseClient.from(ROOM_TABLE).select('state').eq('room_code', roomCode).maybeSingle()
+      .then(function(res){
+        if(res.data && res.data.state){
+          state = res.data.state;
+          persistLocalOnly();
+          paint();
+        }
+      })
+      .catch(function(){});
+  }
+
+  function pushRemote(){
+    if(!supabaseClient || !roomCode) return;
+    supabaseClient.from(ROOM_TABLE).upsert({
+      room_code: roomCode,
+      state: state,
+      updated_at: new Date().toISOString()
+    }).then(function(res){
+      if(res.error) setSyncStatus('offline');
+      else if(syncStatus !== 'online') setSyncStatus('online');
+    }).catch(function(){ setSyncStatus('offline'); });
+  }
+
+  function connectToRoom(code, isJoin){
+    roomCode = code;
+    saveRoomCode(code);
+    updateRoomIndicator();
+    if(!supabaseClient){
+      loadLocalCache();
+      paint();
+      return;
+    }
+    setSyncStatus('connecting');
+    var proceed = function(){
+      subscribeRealtime();
+      persistLocalOnly();
+      paint();
+      pushRemote();
+    };
+    if(isJoin){
+      supabaseClient.from(ROOM_TABLE).select('state').eq('room_code', code).maybeSingle()
+        .then(function(res){
+          if(res.data && res.data.state){
+            state = res.data.state;
+          } else {
+            loadLocalCache();
+          }
+          proceed();
+        })
+        .catch(function(){
+          loadLocalCache();
+          proceed();
+        });
+    } else {
+      loadLocalCache();
+      proceed();
+    }
+  }
+
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible' && roomCode){
+      refreshFromRemote();
+    }
+  });
+
+  var state = {
+    phase: 'setup', // setup | shield | traitors | round1 | round2 | round3 | forced | noVictim | reveal
+    players: [],    // {name, alive:true}
+    night: 0,
+    shielded: [],   // names with a shield this night (excluded from pool)
+    votes: {},      // name -> vote count, for the verbannen (banish) tally
+    traitors: [],   // names marked as traitor — hidden from every night screen
+    traitorReturnPhase: null,
+    rosterReturnPhase: null,
+    eligiblePool: [], // alive & not shielded & not traitor, for round1
+    selected3: [],  // names picked in round1
+    remaining2: [], // names remaining after round2 (safe pick removed)
+    round2Pick: null, // tentative "safe" tap in round2, awaiting confirm
+    round3Pick: null, // tentative "safe" tap in round3, awaiting confirm
+    lastVictim: null,
+    victimHistory: [] // list of {night, victim, type} — victim null = niemand vermoord
+  };
+
+  function el(tag, attrs, children){
+    var e = document.createElement(tag);
+    attrs = attrs || {};
+    Object.keys(attrs).forEach(function(k){
+      if(k === 'class') e.className = attrs[k];
+      else if(k === 'text') e.textContent = attrs[k];
+      else if(k.indexOf('on') === 0) e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (children||[]).forEach(function(c){ if(c) e.appendChild(c); });
+    return e;
+  }
+
+  function alivePlayers(){
+    return state.players.filter(function(p){ return p.alive; });
+  }
+
+  function nonTraitorAlive(){
+    return alivePlayers().filter(function(p){ return state.traitors.indexOf(p.name) === -1; });
+  }
+
+  function openTraitorsPhase(){
+    state.traitorReturnPhase = state.phase;
+    state.phase = 'traitors';
+    render();
+  }
+
+  function closeTraitorsPhase(){
+    state.phase = state.traitorReturnPhase || 'shield';
+    render();
+  }
+
+  function cornerTraitorBtn(){
+    var btn = el('button', {class:'corner-btn', text:'🗡 Verraders'});
+    btn.addEventListener('click', function(){ openTraitorsPhase(); });
+    return btn;
+  }
+
+  function openRosterPhase(){
+    state.rosterReturnPhase = state.phase;
+    state.phase = 'roster';
+    render();
+  }
+
+  function closeRosterPhase(){
+    state.phase = state.rosterReturnPhase || 'shield';
+    render();
+  }
+
+  // paint() only redraws the DOM from the current `state` — used when state
+  // arrived from elsewhere (realtime) and should NOT be written back out.
+  function paint(){
+    var app = document.getElementById('app');
+    app.innerHTML = '';
+    if(state.phase === 'setup') app.appendChild(renderSetup());
+    else if(state.phase === 'shield') app.appendChild(renderShield());
+    else if(state.phase === 'traitors') app.appendChild(renderTraitors());
+    else if(state.phase === 'roster') app.appendChild(renderRoster());
+    else if(state.phase === 'round1') app.appendChild(renderRound1());
+    else if(state.phase === 'round2') app.appendChild(renderRound2());
+    else if(state.phase === 'round3') app.appendChild(renderRound3());
+    else if(state.phase === 'forced') app.appendChild(renderForced());
+    else if(state.phase === 'noVictim') app.appendChild(renderNoVictim());
+    else if(state.phase === 'reveal') app.appendChild(renderReveal());
+  }
+
+  // render() is for LOCAL actions: repaint + persist (local cache + remote room).
+  function render(){
+    paint();
+    saveState();
+  }
+
+  // ---------- AUTOSAVE (survives Safari reloading a backgrounded tab) ----------
+  var STORAGE_KEY = 'verraders-game-state-v1';
+  var storageAvailable = true;
+
+  function localCacheKey(){
+    return STORAGE_KEY + (roomCode ? (':' + roomCode) : '');
+  }
+
+  function persistLocalOnly(){
+    try{
+      localStorage.setItem(localCacheKey(), JSON.stringify(state));
+    } catch(e){
+      storageAvailable = false;
+    }
+  }
+
+  function saveState(){
+    persistLocalOnly();
+    pushRemote();
+  }
+
+  function loadLocalCache(){
+    try{
+      var raw = localStorage.getItem(localCacheKey());
+      if(raw){
+        var parsed = JSON.parse(raw);
+        Object.keys(parsed).forEach(function(k){ state[k] = parsed[k]; });
+      }
+    } catch(e){
+      storageAvailable = false;
+    }
+  }
+
+  // ---------- SETUP ----------
+  function renderSetup(){
+    if(state.players.length === 0){
+      state.players = DEFAULT_NAMES.map(function(n){ return {name:n, alive:true}; });
+    }
+    return renderRosterScreen('setup');
+  }
+
+  // ---------- SHIELD (begeleider) ----------
+  function goToShieldPhase(){
+    state.shielded = [];
+    state.selected3 = [];
+    state.remaining2 = [];
+    state.eligiblePool = [];
+    state.round2Pick = null;
+    state.round3Pick = null;
+    state.votes = {};
+    if(!state.shieldMode) state.shieldMode = 'schild';
+    state.phase = 'shield';
+    render();
+  }
+
+  // Used when backing out of a night round (round1/forced/noVictim) into the
+  // shield screen — keeps the shields the host already set, unlike goToShieldPhase().
+  function backToShieldPreserving(){
+    state.selected3 = [];
+    state.remaining2 = [];
+    state.eligiblePool = [];
+    state.round2Pick = null;
+    state.round3Pick = null;
+    state.night -= 1;
+    if(!state.shieldMode) state.shieldMode = 'schild';
+    state.phase = 'shield';
+    render();
+  }
+
+  function renderShield(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(cornerTraitorBtn());
+    screen.appendChild(el('h1', {text:'Begeleider'}));
+    screen.appendChild(el('div', {class:'subtitle', text:'Voorbereiding op Nacht ' + (state.night + 1)}));
+
+    var modeBar = el('div', {class:'mode-toggle'});
+    var shieldBtn = el('button', {class:'mode-btn' + (state.shieldMode === 'schild' ? ' active-shield' : ''), text:'🛡 Schild geven'});
+    shieldBtn.addEventListener('click', function(){ state.shieldMode = 'schild'; render(); });
+    var banBtn = el('button', {class:'mode-btn' + (state.shieldMode === 'verbannen' ? ' active-ban' : ''), text:'⚔ Verbannen'});
+    banBtn.addEventListener('click', function(){ state.shieldMode = 'verbannen'; render(); });
+    modeBar.appendChild(shieldBtn);
+    modeBar.appendChild(banBtn);
+    screen.appendChild(modeBar);
+
+    var instr = el('div', {class:'instruction'});
+    if(state.shieldMode === 'schild'){
+      instr.innerHTML = 'Tik op iedereen met een <b>schild</b> — die vallen deze nacht buiten beeld';
+    } else {
+      instr.innerHTML = 'Tik op een naam om er een <b>stem</b> aan te geven';
+    }
+    screen.appendChild(instr);
+    var alive = alivePlayers();
+    if(state.shieldMode === 'schild'){
+      screen.appendChild(el('div', {class:'badge-count', text: state.shielded.length + ' met schild · ' + (alive.length - state.shielded.length) + ' zonder schild van ' + alive.length + ' levend'}));
+    } else {
+      var totalVotes = Object.keys(state.votes).reduce(function(sum, n){ return sum + state.votes[n]; }, 0);
+      screen.appendChild(el('div', {class:'badge-count', text: totalVotes + ' stem' + (totalVotes === 1 ? '' : 'men') + ' uitgebracht van ' + alive.length + ' levend'}));
+    }
+
+    var grid = el('div', {class:'grid'});
+    alive.forEach(function(p){
+      if(state.shieldMode === 'schild'){
+        var isShielded = state.shielded.indexOf(p.name) !== -1;
+        var tile = el('div', {class:'tile' + (isShielded ? ' shielded':'')}, [document.createTextNode((isShielded ? '🛡 ' : '') + p.name)]);
+        tile.addEventListener('click', function(){
+          var idx = state.shielded.indexOf(p.name);
+          if(idx !== -1) state.shielded.splice(idx,1);
+          else state.shielded.push(p.name);
+          render();
+        });
+        grid.appendChild(tile);
+      } else {
+        var voteCount = state.votes[p.name] || 0;
+        var tile = el('div', {class:'tile tile-stack' + (voteCount > 0 ? ' voted' : '')});
+        tile.appendChild(el('div', {text: p.name}));
+        if(voteCount > 0){
+          var row = el('div', {class:'vote-row'});
+          row.appendChild(el('span', {class:'vote-badge', text: String(voteCount)}));
+          var minus = el('button', {class:'vote-minus', text:'−'});
+          minus.addEventListener('click', function(ev){
+            ev.stopPropagation();
+            var v = (state.votes[p.name] || 0) - 1;
+            if(v <= 0) delete state.votes[p.name];
+            else state.votes[p.name] = v;
+            render();
+          });
+          row.appendChild(minus);
+          tile.appendChild(row);
+        }
+        tile.addEventListener('click', function(){
+          state.votes[p.name] = (state.votes[p.name] || 0) + 1;
+          render();
+        });
+        grid.appendChild(tile);
+      }
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    if(state.shieldMode === 'schild'){
+      var startNightBtn = el('button', {class:'action primary', text:'Nacht ' + (state.night + 1)});
+      startNightBtn.addEventListener('click', function(){
+        state.night += 1;
+        var stillEligible = nonTraitorAlive();
+        var eligible = stillEligible.filter(function(p){ return state.shielded.indexOf(p.name) === -1; }).map(function(p){return p.name;});
+        beginNight(eligible);
+      });
+      bar.appendChild(startNightBtn);
+    } else {
+      var banExecBtn = el('button', {class:'action primary', text:'Verban wie de meeste stemmen heeft'});
+      banExecBtn.addEventListener('click', function(){
+        var names = Object.keys(state.votes).filter(function(n){ return state.votes[n] > 0; });
+        if(names.length === 0){ alert('Nog geen stemmen uitgebracht.'); return; }
+        var max = Math.max.apply(null, names.map(function(n){ return state.votes[n]; }));
+        var top = names.filter(function(n){ return state.votes[n] === max; });
+        if(top.length > 1){
+          alert('Gelijkspel tussen ' + top.join(' en ') + ' (' + max + ' stemmen elk) — breng nog een stem uit om te beslissen.');
+          return;
+        }
+        var winner = top[0];
+        if(!confirm(winner + ' verbannen met ' + max + ' stem' + (max === 1 ? '' : 'men') + '? Diegene ligt dan uit het spel.')) return;
+        state.players.forEach(function(p){ if(p.name === winner) p.alive = false; });
+        var sIdx = state.shielded.indexOf(winner);
+        if(sIdx !== -1) state.shielded.splice(sIdx,1);
+        state.victimHistory.push({night: state.night, victim: winner, type:'ban'});
+        state.votes = {};
+        render();
+      });
+      bar.appendChild(banExecBtn);
+      var resetVotesBtn = el('button', {class:'action ghost', text:'Stemmen resetten'});
+      resetVotesBtn.addEventListener('click', function(){ state.votes = {}; render(); });
+      bar.appendChild(resetVotesBtn);
+    }
+    screen.appendChild(bar);
+
+    var editLink = el('div', {class:'small-link', text:'Namenlijst bewerken'});
+    editLink.addEventListener('click', function(){ openRosterPhase(); });
+    screen.appendChild(editLink);
+
+    return screen;
+  }
+
+  // ---------- ROSTER (shared: initial setup adds players; later editing also revives dropouts) ----------
+  function renderRoster(){
+    return renderRosterScreen('edit');
+  }
+
+  function renderRosterScreen(mode){
+    var screen = el('div', {class:'screen'});
+    var hasDead = state.players.some(function(p){ return !p.alive; });
+
+    if(mode === 'setup'){
+      screen.appendChild(el('h1', {text:'De Verraders'}));
+      screen.appendChild(el('div', {class:'subtitle', text:'Wie doet er mee?'}));
+      if(!storageAvailable){
+        screen.appendChild(el('div', {class:'warn', text:'⚠️ Deze browser bewaart geen voortgang automatisch (bijv. privénavigatie). Gebruik geen privé-tabblad en sluit Safari niet halverwege het spel.'}));
+      }
+    } else {
+      screen.appendChild(el('h1', {text:'Namenlijst'}));
+    }
+
+    var instr = el('div', {class:'instruction'});
+    if(hasDead){
+      instr.innerHTML = 'Tik op een <b>afgevallen</b> naam om die terug in het spel te zetten';
+    } else if(mode === 'setup'){
+      instr.textContent = 'Voeg spelers toe met de + en druk op Start spel';
+    } else {
+      instr.textContent = 'Iedereen doet nog mee';
+    }
+    screen.appendChild(instr);
+
+    var grid = el('div', {class:'grid'});
+    state.players.forEach(function(p){
+      if(p.alive){
+        if(mode === 'setup'){
+          var tile = el('div', {class:'tile tile-stack'});
+          tile.appendChild(el('div', {text: p.name}));
+          var row = el('div', {class:'vote-row'});
+          var removeBtn = el('button', {class:'vote-minus', text:'×'});
+          removeBtn.addEventListener('click', function(ev){
+            ev.stopPropagation();
+            state.players = state.players.filter(function(pp){ return pp !== p; });
+            render();
+          });
+          row.appendChild(removeBtn);
+          tile.appendChild(row);
+          grid.appendChild(tile);
+        } else {
+          grid.appendChild(el('div', {class:'tile'}, [document.createTextNode(p.name)]));
+        }
+      } else {
+        var deadTile = el('div', {class:'tile roster-dead'}, [document.createTextNode(p.name)]);
+        deadTile.addEventListener('click', function(){
+          p.alive = true;
+          render();
+        });
+        grid.appendChild(deadTile);
+      }
+    });
+    screen.appendChild(grid);
+
+    var addRow = el('div', {class:'add-row'});
+    var input = el('input', {class:'text-input', type:'text', placeholder:'Nieuwe naam'});
+    var plusBtn = el('button', {class:'plus-btn', text:'+'});
+    function addPlayer(){
+      var name = input.value.trim();
+      if(!name) return;
+      var exists = state.players.some(function(p){ return p.name.toLowerCase() === name.toLowerCase(); });
+      if(exists){ alert(name + ' staat al in de lijst.'); return; }
+      state.players.push({name: name, alive: true});
+      render();
+    }
+    plusBtn.addEventListener('click', addPlayer);
+    input.addEventListener('keydown', function(e){ if(e.key === 'Enter') addPlayer(); });
+    addRow.appendChild(input);
+    addRow.appendChild(plusBtn);
+    screen.appendChild(addRow);
+
+    var bar = el('div', {class:'bar'});
+    if(mode === 'setup'){
+      var startBtn = el('button', {class:'action primary lg', text:'Start spel'});
+      startBtn.addEventListener('click', function(){
+        if(state.players.length < 1){ alert('Voeg minstens 1 speler toe.'); return; }
+        state.victimHistory = [];
+        state.traitors = [];
+        state.night = 0;
+        goToShieldPhase();
+      });
+      bar.appendChild(startBtn);
+    } else {
+      var doneBtn = el('button', {class:'action primary', text:'Klaar'});
+      doneBtn.addEventListener('click', function(){ closeRosterPhase(); });
+      bar.appendChild(doneBtn);
+    }
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- TRAITORS (host-only, never shown during the night) ----------
+  function renderTraitors(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(el('h1', {text:'Verraders instellen'}));
+    screen.appendChild(el('div', {class:'subtitle', text:'Alleen voor jou — deze namen verdwijnen hierna van elk nachtscherm'}));
+    var instr = el('div', {class:'instruction'});
+    instr.innerHTML = 'Tik op wie een <b>verrader</b> is';
+    screen.appendChild(instr);
+    var alive = alivePlayers();
+    screen.appendChild(el('div', {class:'badge-count', text: state.traitors.length + ' verrader(s) geselecteerd van ' + alive.length + ' levend'}));
+
+    var grid = el('div', {class:'grid'});
+    alive.forEach(function(p){
+      var isTraitor = state.traitors.indexOf(p.name) !== -1;
+      var tile = el('div', {class:'tile' + (isTraitor ? ' traitor-marked':'')}, [document.createTextNode((isTraitor ? '🗡 ' : '') + p.name)]);
+      tile.addEventListener('click', function(){
+        var idx = state.traitors.indexOf(p.name);
+        if(idx !== -1) state.traitors.splice(idx,1);
+        else state.traitors.push(p.name);
+        render();
+      });
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    var doneBtn = el('button', {class:'action primary', text:'Klaar — verberg dit scherm'});
+    doneBtn.addEventListener('click', function(){ closeTraitorsPhase(); });
+    bar.appendChild(doneBtn);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  function beginNight(eligibleNames){
+    state.eligiblePool = eligibleNames;
+    state.selected3 = [];
+    state.remaining2 = [];
+    state.round2Pick = null;
+    state.round3Pick = null;
+    if(eligibleNames.length === 0){
+      state.phase = 'noVictim';
+    } else if(eligibleNames.length === 1){
+      state.phase = 'forced';
+    } else if(eligibleNames.length === 2){
+      state.remaining2 = eligibleNames.slice();
+      state.phase = 'round3';
+    } else {
+      state.phase = 'round1';
+    }
+    render();
+  }
+
+  function stepDots(activeIndex){
+    var wrap = el('div', {class:'step-dots'});
+    for(var i=0;i<3;i++){
+      var cls = 'dot';
+      if(i < activeIndex) cls += ' done';
+      if(i === activeIndex) cls += ' active';
+      wrap.appendChild(el('div', {class:cls}));
+    }
+    return wrap;
+  }
+
+  function nightTag(){
+    return el('div', {class:'night-tag', text: 'Nacht ' + state.night});
+  }
+
+  // ---------- ROUND 1: pick 3 candidates ----------
+  function renderRound1(){
+    var screen = el('div', {class:'screen'});
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Kies 3 slachtoffers';
+    screen.appendChild(instr);
+
+    var grid = el('div', {class:'grid'});
+    state.eligiblePool.forEach(function(name){
+      var isSel = state.selected3.indexOf(name) !== -1;
+      var tile = el('div', {class:'tile' + (isSel ? ' selected':'')}, [document.createTextNode(name)]);
+      tile.addEventListener('click', function(){
+        var idx = state.selected3.indexOf(name);
+        if(idx !== -1){
+          state.selected3.splice(idx,1);
+        } else {
+          if(state.selected3.length >= 3) return;
+          state.selected3.push(name);
+        }
+        render();
+      });
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    var confirmBtn = el('button', {class:'action primary lg', text:'Geef door'});
+    confirmBtn.disabled = state.selected3.length !== 3;
+    confirmBtn.addEventListener('click', function(){
+      if(state.selected3.length !== 3) return;
+      state.phase = 'round2';
+      render();
+    });
+    bar.appendChild(confirmBtn);
+    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
+    back.addEventListener('click', function(){ backToShieldPreserving(); });
+    bar.appendChild(back);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- ROUND 2: drop 1 (spared) from the 3 ----------
+  function renderRound2(){
+    var screen = el('div', {class:'screen'});
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Kies wie veilig blijft';
+    screen.appendChild(instr);
+
+    var grid = el('div', {class:'grid compact'});
+    state.selected3.forEach(function(name){
+      var isPicked = state.round2Pick === name;
+      var cls = 'tile';
+      cls += state.round2Pick ? (isPicked ? ' safe-picked' : ' not-safe') : ' candidate';
+      var tile = el('div', {class: cls}, [document.createTextNode(name)]);
+      tile.addEventListener('click', function(){
+        state.round2Pick = name;
+        render();
+      });
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    if(state.round2Pick){
+      var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
+      confirmBtn.addEventListener('click', function(){
+        state.remaining2 = state.selected3.filter(function(n){ return n !== state.round2Pick; });
+        state.round2Pick = null;
+        state.phase = 'round3';
+        render();
+      });
+      bar.appendChild(confirmBtn);
+    }
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){ state.round2Pick = null; state.phase = 'round1'; render(); });
+    bar.appendChild(back);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- ROUND 3: pick who stays safe -> the other is murdered ----------
+  function renderRound3(){
+    var screen = el('div', {class:'screen'});
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Kies wie veilig blijft';
+    screen.appendChild(instr);
+
+    var grid = el('div', {class:'grid compact'});
+    state.remaining2.forEach(function(name){
+      var isPicked = state.round3Pick === name;
+      var cls = 'tile';
+      cls += state.round3Pick ? (isPicked ? ' safe-picked' : ' not-safe') : ' candidate';
+      var tile = el('div', {class: cls}, [document.createTextNode(name)]);
+      tile.addEventListener('click', function(){
+        state.round3Pick = name;
+        render();
+      });
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    if(state.round3Pick){
+      var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
+      confirmBtn.addEventListener('click', function(){
+        var victim = state.remaining2.filter(function(n){ return n !== state.round3Pick; })[0];
+        state.round3Pick = null;
+        markVictim(victim);
+      });
+      bar.appendChild(confirmBtn);
+    }
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){
+      state.round3Pick = null;
+      if(state.selected3.length){ state.phase = 'round2'; render(); }
+      else { backToShieldPreserving(); }
+    });
+    bar.appendChild(back);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- FORCED: only 1 eligible player this night ----------
+  function renderForced(){
+    var screen = el('div', {class:'screen'});
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Nog maar 1 speler over';
+    screen.appendChild(instr);
+
+    var grid = el('div', {class:'grid compact'});
+    var name = state.eligiblePool[0];
+    grid.appendChild(el('div', {class:'tile candidate'}, [document.createTextNode(name)]));
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    var confirm = el('button', {class:'action primary lg', text:'Bevestig moord op ' + name});
+    confirm.addEventListener('click', function(){ markVictim(name); });
+    bar.appendChild(confirm);
+    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
+    back.addEventListener('click', function(){ backToShieldPreserving(); });
+    bar.appendChild(back);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- NO VICTIM: everyone shielded ----------
+  function renderNoVictim(){
+    var screen = el('div', {class:'screen'});
+    var warn = el('div', {class:'warn', text:'Iedereen heeft een schild — niemand kan vermoord worden.'});
+    screen.appendChild(warn);
+
+    var bar = el('div', {class:'bar'});
+    var next = el('button', {class:'action primary lg', text:'Volgende nacht'});
+    next.addEventListener('click', function(){
+      state.victimHistory.push({night: state.night, victim: null});
+      goToShieldPhase();
+    });
+    bar.appendChild(next);
+    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
+    back.addEventListener('click', function(){ backToShieldPreserving(); });
+    bar.appendChild(back);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  function markVictim(name){
+    state.players.forEach(function(p){
+      if(p.name === name) p.alive = false;
+    });
+    state.victimHistory.push({night: state.night, victim: name, type:'murder'});
+    state.lastVictim = name;
+    state.phase = 'reveal';
+    render();
+  }
+
+  // ---------- REVEAL ----------
+  function renderReveal(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-label', text:'Nacht ' + state.night + ' — is vermoord'}));
+    wrap.appendChild(el('div', {class:'reveal-name', text: state.lastVictim}));
+    var alive = alivePlayers().length;
+    wrap.appendChild(el('div', {class:'reveal-sub', text: alive + ' spelers nog in leven'}));
+
+    var bar = el('div', {class:'bar'});
+    var nextBtn = el('button', {class:'action primary', text:'Volgende nacht'});
+    nextBtn.addEventListener('click', function(){ goToShieldPhase(); });
+    bar.appendChild(nextBtn);
+    var resetBtn = el('button', {class:'action ghost', text:'Spel resetten'});
+    resetBtn.addEventListener('click', function(){
+      if(confirm('Alle spelers weer tot leven wekken en opnieuw beginnen?')){
+        state.players.forEach(function(p){ p.alive = true; });
+        state.victimHistory = [];
+        state.night = 0;
+        state.phase = 'setup';
+        render();
+      }
+    });
+    bar.appendChild(resetBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+
+    var editLink = el('div', {class:'small-link', text:'Namenlijst bewerken'});
+    editLink.addEventListener('click', function(){ openRosterPhase(); });
+    screen.appendChild(editLink);
+
+    return screen;
+  }
+
+  // ---------- CONNECT (pick / join a room so 2 iPads can sync) ----------
+  function renderConnect(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(el('h1', {text:'De Verraders'}));
+    screen.appendChild(el('div', {class:'subtitle', text: supabaseClient ? 'Verbind deze iPad met een spel' : '⚠️ Kon niet met het synchronisatie-systeem verbinden — deze iPad speelt lokaal'}));
+
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Start een nieuw spel, of vul de kamercode van de andere iPad in';
+    screen.appendChild(instr);
+
+    var bar1 = el('div', {class:'bar'});
+    var newBtn = el('button', {class:'action primary lg', text:'Nieuw spel starten'});
+    newBtn.addEventListener('click', function(){
+      connectToRoom(makeRoomCode(), false);
+    });
+    bar1.appendChild(newBtn);
+    screen.appendChild(bar1);
+
+    screen.appendChild(el('div', {class:'connect-divider', text:'of'}));
+
+    var addRow = el('div', {class:'add-row'});
+    var input = el('input', {class:'text-input', type:'text', placeholder:'Kamercode', maxlength:'8'});
+    input.style.textTransform = 'uppercase';
+    input.style.textAlign = 'center';
+    input.style.letterSpacing = '4px';
+    var joinBtn = el('button', {class:'action primary', text:'Verbinden'});
+    joinBtn.addEventListener('click', function(){
+      var code = input.value.trim().toUpperCase();
+      if(!code){ alert('Vul de kamercode in.'); return; }
+      connectToRoom(code, true);
+    });
+    input.addEventListener('keydown', function(e){ if(e.key === 'Enter') joinBtn.click(); });
+    addRow.appendChild(input);
+    addRow.appendChild(joinBtn);
+    screen.appendChild(addRow);
+
+    if(!supabaseClient){
+      var skipLink = el('div', {class:'small-link', text:'Zonder synchronisatie verdergaan'});
+      skipLink.addEventListener('click', function(){
+        roomCode = 'lokaal';
+        loadLocalCache();
+        paint();
+      });
+      screen.appendChild(skipLink);
+    }
+
+    return screen;
+  }
+
+  function boot(){
+    var app = document.getElementById('app');
+    var existing = loadRoomCode();
+    if(existing){
+      connectToRoom(existing, true);
+    } else {
+      app.innerHTML = '';
+      app.appendChild(renderConnect());
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
