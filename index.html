@@ -470,7 +470,9 @@
   var ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0/I/1 — easy to read aloud
 
   var supabaseClient = (window.supabase && window.supabase.createClient)
-    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      })
     : null;
 
   var roomCode = null;
@@ -592,7 +594,7 @@
       room_code: roomCode,
       state: state,
       updated_at: stamp
-    }).then(function(res){
+    }, { onConflict: 'room_code' }).then(function(res){
       if(res.error){ setSyncStatus('offline', res.error.message || String(res.error)); return; }
       lastAppliedUpdatedAt = stamp;
       if(syncStatus === 'offline') setSyncStatus('connecting');
@@ -1130,8 +1132,7 @@
     var grid = el('div', {class:'grid compact'});
     state.selected3.forEach(function(name){
       var isPicked = state.round2Pick === name;
-      var cls = 'tile';
-      cls += state.round2Pick ? (isPicked ? ' safe-picked' : ' not-safe') : ' candidate';
+      var cls = 'tile' + (isPicked ? ' safe-picked' : ' not-safe');
       var tile = el('div', {class: cls}, [document.createTextNode(name)]);
       tile.addEventListener('click', function(){
         state.round2Pick = name;
@@ -1169,8 +1170,7 @@
     var grid = el('div', {class:'grid compact'});
     state.remaining2.forEach(function(name){
       var isPicked = state.round3Pick === name;
-      var cls = 'tile';
-      cls += state.round3Pick ? (isPicked ? ' safe-picked' : ' not-safe') : ' candidate';
+      var cls = 'tile' + (isPicked ? ' safe-picked' : ' not-safe');
       var tile = el('div', {class: cls}, [document.createTextNode(name)]);
       tile.addEventListener('click', function(){
         state.round3Pick = name;
