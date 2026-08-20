@@ -495,8 +495,12 @@
     try{ localStorage.removeItem(ROOM_KEY); } catch(e){}
   }
 
-  function setSyncStatus(s){
+  var lastSyncError = '';
+
+  function setSyncStatus(s, errMsg){
     syncStatus = s;
+    if(errMsg) lastSyncError = errMsg;
+    if(s === 'online') lastSyncError = '';
     updateRoomIndicator();
   }
 
@@ -507,6 +511,7 @@
     if(!roomCode){ return; }
     var dotClass = syncStatus === 'online' ? 'online' : (syncStatus === 'connecting' ? 'connecting' : 'offline');
     var label = syncStatus === 'online' ? 'verbonden (live)' : (syncStatus === 'connecting' ? 'synchroniseert…' : 'offline (lokaal)');
+    if(syncStatus === 'offline' && lastSyncError){ label += ' — ' + lastSyncError; }
     var span = document.createElement('span');
     var dot = document.createElement('span');
     dot.className = 'dot-status ' + dotClass;
@@ -573,11 +578,11 @@
     if(!supabaseClient || !roomCode) return;
     supabaseClient.from(ROOM_TABLE).select('state, updated_at').eq('room_code', roomCode).maybeSingle()
       .then(function(res){
-        if(res.error){ return; }
+        if(res.error){ setSyncStatus('offline', res.error.message || String(res.error)); return; }
         applyIncoming(res.data);
         if(syncStatus !== 'online') setSyncStatus('connecting');
       })
-      .catch(function(){});
+      .catch(function(err){ setSyncStatus('offline', (err && err.message) || String(err)); });
   }
 
   function pushRemote(){
@@ -588,10 +593,10 @@
       state: state,
       updated_at: stamp
     }).then(function(res){
-      if(res.error){ setSyncStatus('offline'); return; }
+      if(res.error){ setSyncStatus('offline', res.error.message || String(res.error)); return; }
       lastAppliedUpdatedAt = stamp;
       if(syncStatus === 'offline') setSyncStatus('connecting');
-    }).catch(function(){ setSyncStatus('offline'); });
+    }).catch(function(err){ setSyncStatus('offline', (err && err.message) || String(err)); });
   }
 
   function connectToRoom(code, isJoin){
@@ -614,6 +619,7 @@
     if(isJoin){
       supabaseClient.from(ROOM_TABLE).select('state, updated_at').eq('room_code', code).maybeSingle()
         .then(function(res){
+          if(res.error){ lastSyncError = res.error.message || String(res.error); }
           if(res.data && res.data.state){
             applyIncoming(res.data);
           } else {
@@ -621,7 +627,8 @@
           }
           proceed();
         })
-        .catch(function(){
+        .catch(function(err){
+          lastSyncError = (err && err.message) || String(err);
           loadLocalCache();
           proceed();
         });
