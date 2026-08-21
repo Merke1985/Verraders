@@ -816,6 +816,8 @@
     else if(state.phase === 'reveal') app.appendChild(renderReveal());
     else if(state.phase === 'victimInstructions') app.appendChild(renderVictimInstructions());
     else if(state.phase === 'banReveal') app.appendChild(renderBanReveal());
+    else if(state.phase === 'identityReveal') app.appendChild(renderIdentityReveal());
+    else if(state.phase === 'gameEnd') app.appendChild(renderGameEnd());
     else if(state.phase === 'recruitTraitor') app.appendChild(renderRecruitTraitor());
     else if(state.phase === 'recruitHandoff') app.appendChild(renderRecruitHandoff());
     else if(state.phase === 'recruitReveal') app.appendChild(renderRecruitReveal());
@@ -1021,6 +1023,13 @@
         render();
       });
       bar.appendChild(resetVotesBtn);
+      var endGameBtn = el('button', {class:'action ghost', text:'🏆 Spel beëindigen'});
+      endGameBtn.addEventListener('click', function(){
+        if(!confirm('Is het spel echt afgelopen? Vanaf hier wordt getoond wie verrader was.')) return;
+        state.phase = 'identityReveal';
+        render();
+      });
+      bar.appendChild(endGameBtn);
     }
     screen.appendChild(bar);
 
@@ -1559,6 +1568,59 @@
     bar.appendChild(nextBtn);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- IDENTITY REVEAL: tussenscherm voor de spelers hun rol hardop delen ----------
+  function renderIdentityReveal(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'De spelers onthullen nu hun identiteit!'}));
+
+    var bar = el('div', {class:'bar'});
+    var revealBtn = el('button', {class:'action primary lg', text:'Druk hier om de winnaars te onthullen'});
+    revealBtn.addEventListener('click', function(){
+      state.phase = 'gameEnd';
+      render();
+    });
+    bar.appendChild(revealBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- GAME END: winnaars-overzicht — pas gebruiken als het spel echt is
+  // afgelopen en iedereen zijn rol heeft onthuld, want vanaf hier is niets meer geheim ----------
+  function renderGameEnd(){
+    var screen = el('div', {class:'screen'});
+    var survivors = alivePlayers();
+    var traitorsAlive = aliveTraitors();
+    var traitorsWin = traitorsAlive.length > 0;
+
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-label', text:'Het spel is afgelopen'}));
+    wrap.appendChild(el('div', {class:'reveal-name', text: traitorsWin ? 'De verraders winnen' : 'De getrouwen winnen'}));
+    screen.appendChild(wrap);
+
+    var grid = el('div', {class:'grid'});
+    survivors.forEach(function(p){
+      var isTraitor = state.traitors.indexOf(p.name) !== -1;
+      var tile = el('div', {class:'tile tile-stack' + (isTraitor ? ' traitor-marked' : '')});
+      tile.appendChild(el('div', {text: p.name}));
+      tile.appendChild(el('div', {class:'dead-status-label', text: isTraitor ? 'verrader' : 'getrouwe'}));
+      var votes = (state.voteTotals && state.voteTotals[p.name]) || 0;
+      var shields = (state.shieldCounts && state.shieldCounts[p.name]) || 0;
+      tile.appendChild(el('div', {class:'dead-status-label', text: votes + ' tegenstem' + (votes === 1 ? '' : 'men')}));
+      tile.appendChild(el('div', {class:'dead-status-label', text: shields + ' schild' + (shields === 1 ? '' : 'en') + ' verdiend'}));
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    var back = el('button', {class:'action ghost sm', text:'← Terug naar begeleider'});
+    back.addEventListener('click', function(){ state.phase = 'shield'; render(); });
+    bar.appendChild(back);
+    screen.appendChild(bar);
     return screen;
   }
 
