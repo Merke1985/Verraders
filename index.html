@@ -201,11 +201,50 @@
     border-color: var(--red);
     color: white;
   }
+  button.action.confirmed{
+    border-color: var(--safe);
+    background: rgba(63,157,94,0.15);
+    color: var(--safe);
+  }
+  .endgame-banner{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 14px;
+    flex-wrap: wrap;
+    background: linear-gradient(160deg, #2b1418, #3a191d);
+    border: 1px solid var(--red);
+    border-radius: 12px;
+    padding: 10px 18px;
+    margin: 10px 0 4px;
+    color: #ffdede;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+  }
+  .endgame-vote-grid{
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+  .endgame-vote-tile{
+    background: linear-gradient(160deg, var(--panel), var(--panel2));
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 12px;
+    display:flex; flex-direction:column; align-items:center; gap:12px;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .endgame-vote-tile.voted-groen{ border-color: var(--safe); background: rgba(63,157,94,0.14); }
+  .endgame-vote-tile.voted-rood{ border-color: var(--red); background: rgba(196,58,58,0.14); }
+  .endgame-vote-chips{ display:flex; gap:8px; }
   button.action.gold{
     background: var(--gold);
     border-color: var(--gold);
     color: #2a2413;
     font-weight: bold;
+  }
+  button.action.safe{
+    background: var(--safe);
+    border-color: var(--safe);
+    color: white;
   }
   button.action.primary:disabled{
     background: var(--border);
@@ -251,6 +290,10 @@
     text-align:center;
     animation: pulse-in .5s ease;
     margin: 6px 0 4px;
+  }
+  .reveal-name.safe-color{
+    color: var(--safe);
+    text-shadow: 0 0 30px rgba(63,157,94,0.5);
   }
   .reveal-sub{ color: var(--text-dim); font-size: 16px; margin-bottom: 6px; }
   .reveal-message{
@@ -725,6 +768,8 @@
     round1TwoPick: false, // true als er precies 2 verraders zijn — dan 2 ipv 3 opties in ronde 1
     recruitPick: null,    // tentative keuze op het "kies een nieuwe verrader" scherm
     newTraitorName: null, // naam van de zojuist gerekruteerde verrader, voor de privé-onthulling
+    endgameActive: false, // true zodra 'Eindspel' is gestart — blijft aan tot het spel echt eindigt of handmatig wordt teruggezet
+    endgameVotes: {},     // name -> 'rood' | 'groen', voor de rood/groen stemming tijdens het eindspel
     lastVictim: null,
     lastBanished: null,
     lastBanishedVotes: null,
@@ -816,6 +861,9 @@
     else if(state.phase === 'reveal') app.appendChild(renderReveal());
     else if(state.phase === 'victimInstructions') app.appendChild(renderVictimInstructions());
     else if(state.phase === 'banReveal') app.appendChild(renderBanReveal());
+    else if(state.phase === 'banIdentityReveal') app.appendChild(renderBanIdentityReveal());
+    else if(state.phase === 'endGameChoice') app.appendChild(renderEndGameChoice());
+    else if(state.phase === 'endGameConfirm') app.appendChild(renderEndGameConfirm());
     else if(state.phase === 'identityReveal') app.appendChild(renderIdentityReveal());
     else if(state.phase === 'gameEnd') app.appendChild(renderGameEnd());
     else if(state.phase === 'recruitTraitor') app.appendChild(renderRecruitTraitor());
@@ -898,11 +946,20 @@
     render();
   }
 
-  // Shared top menu (Schild geven / Nacht N / Verbannen) — used on both the
+  // Start (of herstart) de rood/groen stemronde van het eindspel. Zijn er nog maar
+  // 2 spelers over, dan heeft stemmen geen zin meer (rood zou toch niemand meer
+  // over laten om te verbannen) — dan gaat het direct door naar de bevestiging.
+  function enterEndgameChoice(){
+    state.endgameVotes = {};
+    state.phase = alivePlayers().length <= 2 ? 'endGameConfirm' : 'endGameChoice';
+    render();
+  }
+
+  // Shared top menu (Opdracht / Vermoorden / Verbannen) — used on both the
   // shield/ban screen and the night-handoff screen, so it's never hidden.
   function buildModeBar(){
     var modeBar = el('div', {class:'mode-toggle'});
-    var shieldBtn = el('button', {class:'mode-btn' + (state.phase === 'shield' && state.shieldMode === 'schild' ? ' active-shield' : ''), text:'🛡 Schild geven'});
+    var shieldBtn = el('button', {class:'mode-btn' + (state.phase === 'shield' && state.shieldMode === 'schild' ? ' active-shield' : ''), text:'🛡 Opdracht'});
     shieldBtn.addEventListener('click', function(){ state.shieldMode = 'schild'; state.phase = 'shield'; render(); });
     modeBar.appendChild(shieldBtn);
 
@@ -923,9 +980,14 @@
     var screen = el('div', {class:'screen'});
     screen.appendChild(cornerTraitorBtn());
     screen.appendChild(el('h1', {text:'Begeleider'}));
-    screen.appendChild(el('div', {class:'subtitle', text:'Voorbereiding op Nacht ' + (state.night + 1)}));
 
     screen.appendChild(buildModeBar());
+
+    if(state.shieldMode === 'verbannen' && state.endgameActive){
+      var endgameBanner = el('div', {class:'endgame-banner'});
+      endgameBanner.appendChild(el('span', {text:'⚡ Eindspel actief'}));
+      screen.appendChild(endgameBanner);
+    }
 
     var instr = el('div', {class:'instruction'});
     if(state.shieldMode === 'schild'){
@@ -1023,13 +1085,22 @@
         render();
       });
       bar.appendChild(resetVotesBtn);
-      var endGameBtn = el('button', {class:'action ghost', text:'🏆 Spel beëindigen'});
-      endGameBtn.addEventListener('click', function(){
-        if(!confirm('Is het spel echt afgelopen? Vanaf hier wordt getoond wie verrader was.')) return;
-        state.phase = 'identityReveal';
-        render();
-      });
-      bar.appendChild(endGameBtn);
+      if(state.endgameActive){
+        var backToNormalBtn = el('button', {class:'action ghost', text:'Terug naar normale spel'});
+        backToNormalBtn.addEventListener('click', function(){
+          state.endgameActive = false;
+          render();
+        });
+        bar.appendChild(backToNormalBtn);
+      } else {
+        var endGameBtn = el('button', {class:'action ghost', text:'🏆 Eindspel'});
+        endGameBtn.addEventListener('click', function(){
+          if(!confirm('Eindspel starten?')) return;
+          state.endgameActive = true;
+          enterEndgameChoice();
+        });
+        bar.appendChild(endGameBtn);
+      }
     }
     screen.appendChild(bar);
 
@@ -1045,7 +1116,6 @@
     var screen = el('div', {class:'screen'});
     screen.appendChild(cornerTraitorBtn());
     screen.appendChild(el('h1', {text:'Begeleider'}));
-    screen.appendChild(el('div', {class:'subtitle', text:'Voorbereiding op Nacht ' + (state.night + 1)}));
 
     screen.appendChild(buildModeBar());
 
@@ -1241,6 +1311,7 @@
         deadTile.addEventListener('click', function(){
           p.alive = true;
           p.deathType = null;
+          p.identityRevealed = false;
           render();
         });
         grid.appendChild(deadTile);
@@ -1355,10 +1426,6 @@
       wrap.appendChild(el('div', {class:cls}));
     }
     return wrap;
-  }
-
-  function nightTag(){
-    return el('div', {class:'night-tag', text: 'Nacht ' + state.night});
   }
 
   // ---------- ROUND 1: pick 3 candidates (of 2, bij precies 2 verraders) ----------
@@ -1558,14 +1625,136 @@
       wrap.appendChild(el('div', {class:'reveal-votes', text: state.lastBanishedVotes + ' stem' + (state.lastBanishedVotes === 1 ? '' : 'men')}));
     }
 
+    // De verbannen speler onthult normaliter zelf aan tafel of hij/zij verrader of
+    // getrouwe was — pas als dat écht is gebeurd tikt de begeleider deze knop aan, en
+    // dan volgt een apart scherm met de rol erop (ook zichtbaar op het statusscherm,
+    // dus ook voor de afgevallen spelers). Tijdens het eindspel blijft de identiteit
+    // juist geheim tot de allerlaatste onthulling — dat scherm slaan we dan over.
+    var bannedPlayer = state.players.filter(function(p){ return p.name === state.lastBanished; })[0];
+
     var bar = el('div', {class:'bar'});
-    var nextBtn = el('button', {class:'action primary lg', text:'Terug naar begeleider'});
+    var nextBtn = el('button', {class:'action primary lg', text: state.endgameActive ? 'Verder in het eindspel' : 'Heeft zijn of haar identiteit onthuld'});
+    nextBtn.addEventListener('click', function(){
+      if(state.endgameActive){
+        enterEndgameChoice();
+        return;
+      }
+      if(bannedPlayer) bannedPlayer.identityRevealed = true;
+      state.phase = 'banIdentityReveal';
+      render();
+    });
+    bar.appendChild(nextBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- BAN IDENTITY REVEAL: de rol van de zojuist verbannen speler in beeld ----------
+  function renderBanIdentityReveal(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    var isTraitor = state.traitors.indexOf(state.lastBanished) !== -1;
+    wrap.appendChild(el('div', {class:'reveal-label', text: state.lastBanished}));
+    wrap.appendChild(el('div', {class:'reveal-name' + (isTraitor ? '' : ' safe-color'), text: isTraitor ? 'Verrader' : 'Getrouwe'}));
+    if(state.lastBanishedVotes){
+      wrap.appendChild(el('div', {class:'reveal-votes', text: state.lastBanishedVotes + ' stem' + (state.lastBanishedVotes === 1 ? '' : 'men')}));
+    }
+
+    var bar = el('div', {class:'bar'});
+    var nextBtn = el('button', {class:'action primary lg', text:'Door naar de volgende dag'});
     nextBtn.addEventListener('click', function(){
       state.shieldMode = 'schild';
       state.phase = 'shield';
       render();
     });
     bar.appendChild(nextBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- END GAME CHOICE: iedere overgebleven speler stemt zelf rood of groen ----------
+  function renderEndGameChoice(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(el('h1', {text:'Eindspel'}));
+    var endgameBanner = el('div', {class:'endgame-banner'});
+    endgameBanner.appendChild(el('span', {text:'⚡ Eindspel actief'}));
+    screen.appendChild(endgameBanner);
+    screen.appendChild(el('div', {class:'instruction', text:'Elke speler stemt rood of groen. Zit er ook maar 1 rode stem bij, wordt er opnieuw iemand verbannen.'}));
+
+    var alive = alivePlayers();
+    var votedCount = alive.filter(function(p){ return !!state.endgameVotes[p.name]; }).length;
+    screen.appendChild(el('div', {class:'badge-count', text: votedCount + ' van ' + alive.length + ' heeft gestemd'}));
+
+    var grid = el('div', {class:'grid endgame-vote-grid'});
+    alive.forEach(function(p){
+      var vote = state.endgameVotes[p.name];
+      var tile = el('div', {class:'endgame-vote-tile' + (vote ? ' voted-' + vote : '')});
+      tile.appendChild(el('span', {class:'tile-name-text', text: p.name}));
+      var chips = el('div', {class:'endgame-vote-chips'});
+      var greenBtn = el('button', {class:'action sm' + (vote === 'groen' ? ' safe' : ' ghost'), text:'🟢 Groen'});
+      greenBtn.addEventListener('click', function(){
+        state.endgameVotes[p.name] = (state.endgameVotes[p.name] === 'groen') ? undefined : 'groen';
+        if(!state.endgameVotes[p.name]) delete state.endgameVotes[p.name];
+        render();
+      });
+      var redBtn = el('button', {class:'action sm' + (vote === 'rood' ? ' primary' : ' ghost'), text:'🔴 Rood'});
+      redBtn.addEventListener('click', function(){
+        state.endgameVotes[p.name] = (state.endgameVotes[p.name] === 'rood') ? undefined : 'rood';
+        if(!state.endgameVotes[p.name]) delete state.endgameVotes[p.name];
+        render();
+      });
+      chips.appendChild(greenBtn);
+      chips.appendChild(redBtn);
+      tile.appendChild(chips);
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    var resolveBtn = el('button', {class:'action primary lg', text:'Uitslag bepalen'});
+    resolveBtn.addEventListener('click', function(){
+      if(votedCount < alive.length){
+        alert('Nog niet iedereen heeft gestemd.');
+        return;
+      }
+      var allGreen = alive.every(function(p){ return state.endgameVotes[p.name] === 'groen'; });
+      if(allGreen){
+        // endgameVotes blijft nog even bewaard zodat de statuspagina tijdens het
+        // bevestigingsscherm de rood/groen-uitslag kan blijven tonen.
+        state.phase = 'endGameConfirm';
+      } else {
+        state.endgameVotes = {};
+        state.shieldMode = 'verbannen';
+        state.phase = 'shield';
+      }
+      render();
+    });
+    bar.appendChild(resolveBtn);
+    screen.appendChild(bar);
+
+    return screen;
+  }
+
+  // ---------- END GAME CONFIRM: laatste bevestiging voordat de identiteiten onthuld worden ----------
+  function renderEndGameConfirm(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Het spel beëindigt nu. Weet je dat zeker?'}));
+
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action safe lg', text:'Ja, beëindigen'});
+    yes.addEventListener('click', function(){
+      state.endgameVotes = {};
+      state.phase = 'identityReveal';
+      render();
+    });
+    bar.appendChild(yes);
+    var no = el('button', {class:'action ghost sm', text:'← Nee, terug'});
+    no.addEventListener('click', function(){
+      enterEndgameChoice();
+    });
+    bar.appendChild(no);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
     return screen;
@@ -1584,6 +1773,9 @@
       render();
     });
     bar.appendChild(revealBtn);
+    var back = el('button', {class:'action ghost sm', text:'← Terug (per ongeluk gedrukt)'});
+    back.addEventListener('click', function(){ state.phase = 'shield'; render(); });
+    bar.appendChild(back);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
     return screen;
@@ -1596,10 +1788,13 @@
     var survivors = alivePlayers();
     var traitorsAlive = aliveTraitors();
     var traitorsWin = traitorsAlive.length > 0;
+    var winTitle = traitorsWin
+      ? (traitorsAlive.length === 1 ? 'De overgebleven verrader heeft gewonnen!' : 'De verraders winnen')
+      : 'De getrouwen winnen';
 
     var wrap = el('div', {class:'reveal-wrap'});
     wrap.appendChild(el('div', {class:'reveal-label', text:'Het spel is afgelopen'}));
-    wrap.appendChild(el('div', {class:'reveal-name', text: traitorsWin ? 'De verraders winnen' : 'De getrouwen winnen'}));
+    wrap.appendChild(el('div', {class:'reveal-name', text: winTitle}));
     screen.appendChild(wrap);
 
     var grid = el('div', {class:'grid'});
@@ -1628,7 +1823,7 @@
   function renderReveal(){
     var screen = el('div', {class:'screen'});
     var wrap = el('div', {class:'reveal-wrap'});
-    wrap.appendChild(el('div', {class:'reveal-label', text:'Nacht ' + state.night + ' — is vermoord'}));
+    wrap.appendChild(el('div', {class:'reveal-label', text:'is vermoord'}));
     wrap.appendChild(el('div', {class:'reveal-name', text: state.lastVictim}));
     var alive = alivePlayers().length;
     wrap.appendChild(el('div', {class:'reveal-sub', text: alive + ' spelers nog in leven'}));
