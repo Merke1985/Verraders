@@ -105,8 +105,14 @@
     box-shadow: 0 0 18px var(--red-glow);
     color: #ffdede;
   }
+  .tile.selected-safe{
+    border-color: var(--safe);
+    background: linear-gradient(160deg, #16281c, #1c3524);
+    box-shadow: 0 0 18px rgba(63,157,94,0.5);
+    color: #d7ffe4;
+  }
   .tile.dimmed{ opacity: 0.28; pointer-events:none; filter: grayscale(0.6); }
-  .tile.dead{ opacity: 0.18; pointer-events:none; text-decoration: line-through; }
+  .tile.dead{ opacity: 0.18; pointer-events:none; }
   .tile.candidate{
     border-color: var(--gold);
     background: linear-gradient(160deg, #2a2413, #3a3018);
@@ -133,6 +139,38 @@
     box-shadow: 0 0 14px var(--red-glow);
     color: #ffb3b3;
   }
+  .tile.victim-pick{
+    box-shadow: 0 0 22px var(--red-glow), 0 0 40px rgba(255,60,60,0.35);
+  }
+  .tile.round3-tile{
+    border-width: 4px;
+  }
+  .tile.tile-stack{
+    flex-direction: column;
+    gap: 8px;
+  }
+  .tile.tile-stack .tile-name-text{
+    flex: none;
+    text-align: center;
+  }
+  .tile-status-label{
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    padding: 3px 12px;
+    border-radius: 999px;
+  }
+  .tile-status-label.safe-label{
+    color: #c9f5d6;
+    background: rgba(63,157,94,0.25);
+  }
+  .tile-status-label.victim-label{
+    color: #ffb3b3;
+    background: rgba(255,60,60,0.25);
+  }
+  .tile-status-label.label-placeholder{
+    visibility: hidden;
+  }
   .tile.roster-dead{
     opacity: 0.5;
     border-color: var(--border);
@@ -140,7 +178,7 @@
     color: var(--text-dim);
   }
   .dead-name{
-    text-decoration: line-through;
+    text-decoration: none;
   }
   .dead-status-label{
     font-size: 11px;
@@ -560,10 +598,10 @@
 <script>
 (function(){
   var DEFAULT_NAMES = [
-    'Johan', 'Annelies', 'Nieske', 'Hanne', 'Elsbeth K.',
-    'Elsbeth S.', 'Jurjen', 'Daan', 'Joren', 'Lize',
-    'Siem', 'Arjen', 'Niels', 'Koen', 'Joost',
-    'Geertje', 'Nick'
+    'Annelies', 'Arjen', 'Daan', 'Edwin', 'Elsbeth K.',
+    'Elsbeth S.', 'Geertje', 'Hanne', 'Johan', 'Joost',
+    'Joren', 'Jurjen', 'Koen', 'Lize', 'Nick',
+    'Niels', 'Nieske', 'Sander', 'Siem'
   ];
 
   // ---------- SYNC (2 iPads, live, via Supabase) ----------
@@ -759,7 +797,10 @@
     traitors: [],   // names marked as traitor — hidden from every night screen
     traitorReturnPhase: null,
     pendingGameStart: false, // true tussen 'Start spel' en het bevestigen van de verraders
+    pendingBanWinner: null, // tentatieve verbanning, in afwachting van bevestiging
+    pendingBanVotes: null,
     rosterReturnPhase: null,
+    genericVictimReturnPhase: null, // waar terug naartoe na het algemene "je bent vermoord"-scherm
     eligiblePool: [], // alive & not shielded & not traitor, for round1
     selected3: [],  // names picked in round1
     remaining2: [], // names remaining after round2 (safe pick removed)
@@ -767,6 +808,8 @@
     round3Pick: null, // tentative "safe" tap in round3, awaiting confirm
     round1TwoPick: false, // true als er precies 2 verraders zijn — dan 2 ipv 3 opties in ronde 1
     recruitPick: null,    // tentative keuze op het "kies een nieuwe verrader" scherm
+    silentMurderPick: null, // tentative keuze op het "moorden zonder iPad" scherm
+    lastVictimReturnPhase: null, // waar "Vergissing" op het "is vermoord"-scherm naartoe gaat
     newTraitorName: null, // naam van de zojuist gerekruteerde verrader, voor de privé-onthulling
     endgameActive: false, // true zodra 'Eindspel' is gestart — blijft aan tot het spel echt eindigt of handmatig wordt teruggezet
     endgameVotes: {},     // name -> 'rood' | 'groen', voor de rood/groen stemming tijdens het eindspel
@@ -826,16 +869,50 @@
     render();
   }
 
-  function cornerTraitorBtn(){
-    var btn = el('button', {class:'corner-btn', text:'🗡 Verraders'});
-    btn.addEventListener('click', function(){ openTraitorsPhase(); });
-    return btn;
-  }
-
   function openRosterPhase(){
     state.rosterReturnPhase = state.phase;
     state.phase = 'roster';
     render();
+  }
+
+  function cornerRosterBtn(){
+    var btn = el('button', {class:'corner-btn', text:'📝 Namenlijst bewerken'});
+    btn.addEventListener('click', function(){ openRosterPhase(); });
+    return btn;
+  }
+
+  // ---------- ALGEMEEN "JE BENT VERMOORD" SCHERM (vangnet) — voor als er per ongeluk te
+  // snel doorgeklikt is en het echte victimInstructions-scherm gemist is ----------
+  function openGenericVictimScreen(){
+    state.genericVictimReturnPhase = state.phase;
+    state.phase = 'genericVictimScreen';
+    render();
+  }
+
+  function closeGenericVictimScreen(){
+    state.phase = state.genericVictimReturnPhase || 'shield';
+    render();
+  }
+
+  function genericVictimLink(){
+    var link = el('div', {class:'small-link', text:'💀 Toon "je bent vermoord"-scherm'});
+    link.addEventListener('click', function(){ openGenericVictimScreen(); });
+    return link;
+  }
+
+  function renderGenericVictimScreen(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-name', text:'Je bent vermoord'}));
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Verlaat zonder geluid te maken de tafel en loop naar de andere ruimte.'}));
+
+    var bar = el('div', {class:'bar'});
+    var back = el('button', {class:'action primary lg', text:'← Terug'});
+    back.addEventListener('click', function(){ closeGenericVictimScreen(); });
+    bar.appendChild(back);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
   }
 
   function closeRosterPhase(){
@@ -851,8 +928,13 @@
     if(state.phase === 'setup') app.appendChild(renderSetup());
     else if(state.phase === 'shield') app.appendChild(renderShield());
     else if(state.phase === 'nightHandoff') app.appendChild(renderNightHandoff());
+    else if(state.phase === 'nightIpadHandoff') app.appendChild(renderNightIpadHandoff());
+    else if(state.phase === 'silentMurderIntro') app.appendChild(renderSilentMurderIntro());
+    else if(state.phase === 'silentMurderPick') app.appendChild(renderSilentMurderPick());
+    else if(state.phase === 'silentMurderConfirm') app.appendChild(renderSilentMurderConfirm());
     else if(state.phase === 'traitors') app.appendChild(renderTraitors());
     else if(state.phase === 'roster') app.appendChild(renderRoster());
+    else if(state.phase === 'genericVictimScreen') app.appendChild(renderGenericVictimScreen());
     else if(state.phase === 'round1') app.appendChild(renderRound1());
     else if(state.phase === 'round2') app.appendChild(renderRound2());
     else if(state.phase === 'round3') app.appendChild(renderRound3());
@@ -860,12 +942,19 @@
     else if(state.phase === 'noVictim') app.appendChild(renderNoVictim());
     else if(state.phase === 'reveal') app.appendChild(renderReveal());
     else if(state.phase === 'victimInstructions') app.appendChild(renderVictimInstructions());
+    else if(state.phase === 'nextDayConfirm') app.appendChild(renderNextDayConfirm());
+    else if(state.phase === 'banConfirm') app.appendChild(renderBanConfirm());
     else if(state.phase === 'banReveal') app.appendChild(renderBanReveal());
+    else if(state.phase === 'banIdentityConfirm') app.appendChild(renderBanIdentityConfirm());
     else if(state.phase === 'banIdentityReveal') app.appendChild(renderBanIdentityReveal());
     else if(state.phase === 'endGameChoice') app.appendChild(renderEndGameChoice());
+    else if(state.phase === 'endGameRedOutcome') app.appendChild(renderEndGameRedOutcome());
     else if(state.phase === 'endGameConfirm') app.appendChild(renderEndGameConfirm());
     else if(state.phase === 'identityReveal') app.appendChild(renderIdentityReveal());
+    else if(state.phase === 'winnersConfirm') app.appendChild(renderWinnersConfirm());
     else if(state.phase === 'gameEnd') app.appendChild(renderGameEnd());
+    else if(state.phase === 'gameEndExitConfirm') app.appendChild(renderGameEndExitConfirm());
+    else if(state.phase === 'recruitTraitorIntro') app.appendChild(renderRecruitTraitorIntro());
     else if(state.phase === 'recruitTraitor') app.appendChild(renderRecruitTraitor());
     else if(state.phase === 'recruitHandoff') app.appendChild(renderRecruitHandoff());
     else if(state.phase === 'recruitReveal') app.appendChild(renderRecruitReveal());
@@ -932,8 +1021,8 @@
     render();
   }
 
-  // Used when backing out of a night round (round1/forced/noVictim) into the
-  // shield screen — keeps the shields the host already set, unlike goToShieldPhase().
+  // Used when backing out of a night round (round1/forced/noVictim) — terug naar het
+  // moord-menu (nightHandoff), niet helemaal terug naar de dag.
   function backToShieldPreserving(){
     state.selected3 = [];
     state.remaining2 = [];
@@ -941,8 +1030,20 @@
     state.round2Pick = null;
     state.round3Pick = null;
     state.night -= 1;
-    if(!state.shieldMode) state.shieldMode = 'schild';
-    state.phase = 'shield';
+    state.phase = 'nightHandoff';
+    render();
+  }
+
+  // Used when backing out of round1 of een handmatige moord (silentMurderPick) —
+  // maar 1 scherm terug, naar "Ga bij een verrader staan" (nightIpadHandoff).
+  function backToNightIpadHandoff(){
+    state.selected3 = [];
+    state.remaining2 = [];
+    state.eligiblePool = [];
+    state.round2Pick = null;
+    state.round3Pick = null;
+    state.night -= 1;
+    state.phase = 'nightIpadHandoff';
     render();
   }
 
@@ -978,7 +1079,7 @@
 
   function renderShield(){
     var screen = el('div', {class:'screen'});
-    screen.appendChild(cornerTraitorBtn());
+    screen.appendChild(cornerRosterBtn());
     screen.appendChild(el('h1', {text:'Begeleider'}));
 
     screen.appendChild(buildModeBar());
@@ -991,7 +1092,7 @@
 
     var instr = el('div', {class:'instruction'});
     if(state.shieldMode === 'schild'){
-      instr.textContent = 'Tik op iedereen met een schild';
+      instr.textContent = 'De opdracht wordt gespeeld. Geef hieronder aan wie een schild hebben verdiend.';
     } else {
       instr.innerHTML = 'Tik op een naam om er een <b>stem</b> aan te geven';
     }
@@ -1064,15 +1165,9 @@
           alert('Gelijkspel tussen ' + top.join(' en ') + ' (' + max + ' stemmen elk) — breng nog een stem uit om te beslissen.');
           return;
         }
-        var winner = top[0];
-        state.players.forEach(function(p){ if(p.name === winner){ p.alive = false; p.deathType = 'ban'; } });
-        var sIdx = state.shielded.indexOf(winner);
-        if(sIdx !== -1) state.shielded.splice(sIdx,1);
-        state.victimHistory.push({night: state.night, victim: winner, type:'ban'});
-        state.lastBanished = winner;
-        state.lastBanishedVotes = max;
-        state.votes = {};
-        state.phase = 'banReveal';
+        state.pendingBanWinner = top[0];
+        state.pendingBanVotes = max;
+        state.phase = 'banConfirm';
         render();
       });
       bar.appendChild(banExecBtn);
@@ -1103,10 +1198,7 @@
       }
     }
     screen.appendChild(bar);
-
-    var editLink = el('div', {class:'small-link', text:'Namenlijst bewerken'});
-    editLink.addEventListener('click', function(){ openRosterPhase(); });
-    screen.appendChild(editLink);
+    screen.appendChild(genericVictimLink());
 
     return screen;
   }
@@ -1114,7 +1206,7 @@
   // ---------- NIGHT HANDOFF (blindfold ritual: pass the iPad before the murder screen shows) ----------
   function renderNightHandoff(){
     var screen = el('div', {class:'screen'});
-    screen.appendChild(cornerTraitorBtn());
+    screen.appendChild(cornerRosterBtn());
     screen.appendChild(el('h1', {text:'Begeleider'}));
 
     screen.appendChild(buildModeBar());
@@ -1123,14 +1215,44 @@
     instr.textContent = 'Druk op de knop en laat de verrader kiezen';
     screen.appendChild(instr);
 
+    screen.appendChild(el('div', {class:'warn', text:'👁️‍🗨️ Laat eerst iedereen de blinddoek om doen, druk daarna pas op de knop.'}));
+
     var bar = el('div', {class:'bar'});
     var fallBtn = el('button', {class:'action primary lg night-btn', text:'De nacht valt'});
     fallBtn.addEventListener('click', function(){
+      // Nog maar 1 verrader over: geen keuze tussen ronde/handmatig — deze nacht wordt
+      // sowieso niet gemoord, maar meteen een nieuwe verrader gerekruteerd.
+      if(aliveTraitors().length === 1){
+        state.night += 1;
+        state.phase = 'recruitTraitorIntro';
+        render();
+        return;
+      }
+      state.phase = 'nightIpadHandoff';
+      render();
+    });
+    bar.appendChild(fallBtn);
+    screen.appendChild(bar);
+    screen.appendChild(genericVictimLink());
+
+    return screen;
+  }
+
+  // ---------- NIGHT IPAD HANDOFF: tussenscherm — de iPad wordt fysiek doorgegeven
+  // voordat de verrader(s) daadwerkelijk gaan kiezen ----------
+  function renderNightIpadHandoff(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Ga bij een verrader staan, druk op bevestig en houd de iPad zo voorzichtig mogelijk voor de verrader.'}));
+
+    var bar = el('div', {class:'bar'});
+    var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
+    confirmBtn.addEventListener('click', function(){
       state.night += 1;
       // Nog maar 1 verrader over: deze nacht wordt niet gemoord, maar wordt er een
       // nieuwe verrader gerekruteerd zodat er weer 2 verraders zijn.
       if(aliveTraitors().length === 1){
-        state.phase = 'recruitTraitor';
+        state.phase = 'recruitTraitorIntro';
         render();
         return;
       }
@@ -1138,16 +1260,140 @@
       var eligible = stillEligible.filter(function(p){ return state.shielded.indexOf(p.name) === -1; }).map(function(p){return p.name;});
       beginNight(eligible);
     });
-    bar.appendChild(fallBtn);
-    screen.appendChild(bar);
+    bar.appendChild(confirmBtn);
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){
+      state.phase = 'nightHandoff';
+      render();
+    });
+    bar.appendChild(back);
+    wrap.appendChild(bar);
 
+    // Met nog maar 1 verrader is er geen "moorden" te kiezen — dan zou dit hier niet
+    // moeten kunnen (dat wordt al afgevangen vóór dit scherm, maar voor de zekerheid).
+    if(aliveTraitors().length > 1){
+      var silentLink = el('div', {class:'small-link', text:'Handmatig vermoorden'});
+      silentLink.addEventListener('click', function(){
+        state.phase = 'silentMurderIntro';
+        render();
+      });
+      wrap.appendChild(silentLink);
+    }
+    wrap.appendChild(genericVictimLink());
+
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- SILENT MURDER: verraders hebben elkaar later in het spel non-verbaal een
+  // naam doorgegeven, dus geen ronde met de iPad — de begeleider kiest zelf de naam ----------
+  function renderSilentMurderIntro(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Weet je zeker dat je handmatig wilt vermoorden?'}));
+
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action primary lg', text:'Bevestig'});
+    yes.addEventListener('click', function(){
+      state.night += 1;
+      state.phase = 'silentMurderPick';
+      render();
+    });
+    bar.appendChild(yes);
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){
+      state.phase = 'nightIpadHandoff';
+      render();
+    });
+    bar.appendChild(back);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  function renderSilentMurderPick(){
+    var screen = el('div', {class:'screen'});
+    screen.appendChild(cornerRosterBtn());
+    screen.appendChild(el('h1', {text:'Moorden zonder iPad'}));
+    screen.appendChild(el('div', {class:'subtitle', text:'De verraders hebben elkaar non-verbaal op de hoogte gebracht'}));
+
+    var instr = el('div', {class:'instruction'});
+    instr.textContent = 'Tik op wie vermoord wordt';
+    screen.appendChild(instr);
+
+    var eligible = nonTraitorAlive().filter(function(p){ return state.shielded.indexOf(p.name) === -1; });
+    var grid = el('div', {class:'grid'});
+    eligible.forEach(function(p){
+      var tile = el('div', {class:'tile'});
+      tile.appendChild(document.createTextNode(p.name));
+      tile.addEventListener('click', function(){
+        state.silentMurderPick = p.name;
+        state.phase = 'silentMurderConfirm';
+        render();
+      });
+      grid.appendChild(tile);
+    });
+    screen.appendChild(grid);
+
+    var bar = el('div', {class:'bar'});
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){
+      state.silentMurderPick = null;
+      backToNightIpadHandoff();
+    });
+    bar.appendChild(back);
+    screen.appendChild(bar);
+    return screen;
+  }
+
+  function renderSilentMurderConfirm(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-label', text:'Weet je het zeker?'}));
+    wrap.appendChild(el('div', {class:'reveal-name', text: state.silentMurderPick}));
+
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action primary lg', text:'Bevestig'});
+    yes.addEventListener('click', function(){
+      var victim = state.silentMurderPick;
+      state.silentMurderPick = null;
+      markVictim(victim, 'silentMurderPick');
+    });
+    bar.appendChild(yes);
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){
+      state.silentMurderPick = null;
+      state.phase = 'silentMurderPick';
+      render();
+    });
+    bar.appendChild(back);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- RECRUIT TRAITOR INTRO: grote aankondiging vóór de keuze-screen ----------
+  function renderRecruitTraitorIntro(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Jij bent de enige verrader, in plaats van moorden kies je nu een nieuwe verrader!'}));
+
+    var bar = el('div', {class:'bar'});
+    var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
+    confirmBtn.addEventListener('click', function(){
+      state.phase = 'recruitTraitor';
+      render();
+    });
+    bar.appendChild(confirmBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
     return screen;
   }
 
   // ---------- RECRUIT TRAITOR: nog maar 1 verrader over, dus deze nacht geen moord ----------
   function renderRecruitTraitor(){
     var screen = el('div', {class:'screen'});
-    screen.appendChild(cornerTraitorBtn());
+    screen.appendChild(cornerRosterBtn());
     screen.appendChild(el('h1', {text:'Nog maar 1 verrader over'}));
     screen.appendChild(el('div', {class:'subtitle', text:'Deze nacht wordt niet gemoord — kies een nieuwe verrader'}));
 
@@ -1159,7 +1405,7 @@
     var grid = el('div', {class:'grid'});
     candidates.forEach(function(p){
       var isSel = state.recruitPick === p.name;
-      var tile = el('div', {class:'tile' + (isSel ? ' selected':'')});
+      var tile = el('div', {class:'tile' + (isSel ? ' selected-safe':'')});
       tile.appendChild(document.createTextNode(p.name));
       tile.addEventListener('click', function(){
         state.recruitPick = p.name;
@@ -1181,7 +1427,7 @@
       });
       bar.appendChild(confirmBtn);
     }
-    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
     back.addEventListener('click', function(){
       state.recruitPick = null;
       backToShieldPreserving();
@@ -1218,7 +1464,7 @@
     wrap.appendChild(el('div', {class:'reveal-message', text:'Jij bent vanaf nu een verrader'}));
 
     var bar = el('div', {class:'bar'});
-    var nextBtn = el('button', {class:'action primary lg', text:'Volgende nacht'});
+    var nextBtn = el('button', {class:'action primary lg', text:'Volgende dag'});
     nextBtn.addEventListener('click', function(){
       state.newTraitorName = null;
       goToShieldPhase();
@@ -1356,6 +1602,13 @@
       bar.appendChild(doneBtn);
     }
     screen.appendChild(bar);
+
+    if(mode !== 'setup'){
+      var traitorLink = el('div', {class:'small-link', text:'🗡 Verraders aanpassen'});
+      traitorLink.addEventListener('click', function(){ openTraitorsPhase(); });
+      screen.appendChild(traitorLink);
+    }
+
     return screen;
   }
 
@@ -1388,7 +1641,13 @@
 
     var bar = el('div', {class:'bar'});
     var doneBtn = el('button', {class:'action primary', text:'Klaar — verberg dit scherm'});
-    doneBtn.addEventListener('click', function(){ closeTraitorsPhase(); });
+    doneBtn.addEventListener('click', function(){
+      if(state.traitors.length === 0){
+        alert('Kies minimaal 1 verrader voordat je verder kan.');
+        return;
+      }
+      closeTraitorsPhase();
+    });
     bar.appendChild(doneBtn);
     screen.appendChild(bar);
     return screen;
@@ -1469,8 +1728,8 @@
       render();
     });
     bar.appendChild(confirmBtn);
-    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
-    back.addEventListener('click', function(){ backToShieldPreserving(); });
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){ backToNightIpadHandoff(); });
     bar.appendChild(back);
     screen.appendChild(bar);
     return screen;
@@ -1515,19 +1774,24 @@
     return screen;
   }
 
-  // ---------- ROUND 3: pick who stays safe -> the other is murdered ----------
+  // ---------- ROUND 3: pick who gets murdered -> the other stays safe ----------
   function renderRound3(){
     var screen = el('div', {class:'screen'});
     var instr = el('div', {class:'instruction'});
-    instr.textContent = state.round1TwoPick ? 'Breng de doorslaggevende stem uit — kies wie veilig blijft' : 'Kies wie veilig blijft';
+    instr.textContent = state.round1TwoPick ? 'Breng de doorslaggevende stem uit — kies wie er vermoord wordt!' : 'Kies wie er vermoord wordt!';
     screen.appendChild(instr);
 
     var grid = el('div', {class:'grid compact'});
     state.remaining2.forEach(function(name){
-      var isPicked = state.round3Pick === name;
-      var cls = 'tile' + (isPicked ? ' safe-picked' : ' not-safe');
+      var isVictim = state.round3Pick === name;
+      var isSafe = state.round3Pick && !isVictim;
+      var cls = 'tile round3-tile tile-stack' + (isVictim ? ' not-safe victim-pick' : (isSafe ? ' safe-picked' : ''));
       var tile = el('div', {class: cls});
-      tile.appendChild(document.createTextNode(name));
+      tile.appendChild(el('span', {class:'tile-icon' + (isVictim ? '' : ' icon-hidden'), text:'💀'}));
+      tile.appendChild(el('span', {class:'tile-name-text', text: name}));
+      if(isVictim){ tile.appendChild(el('span', {class:'tile-status-label victim-label', text:'Moorden'})); }
+      else if(isSafe){ tile.appendChild(el('span', {class:'tile-status-label safe-label', text:'Redden'})); }
+      else { tile.appendChild(el('span', {class:'tile-status-label label-placeholder', text:'Moorden'})); }
       tile.addEventListener('click', function(){
         state.round3Pick = name;
         render();
@@ -1540,15 +1804,16 @@
     if(state.round3Pick){
       var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
       confirmBtn.addEventListener('click', function(){
-        var victim = state.remaining2.filter(function(n){ return n !== state.round3Pick; })[0];
+        var victim = state.round3Pick;
         state.round3Pick = null;
-        markVictim(victim);
+        markVictim(victim, 'round3');
       });
       bar.appendChild(confirmBtn);
     }
     var back = el('button', {class:'action ghost sm', text:'← Terug'});
     back.addEventListener('click', function(){
-      state.round3Pick = null;
+      // De keuze (round3Pick) blijft bewust bewaard — bij een ongelukkige terug-tik
+      // staat de eerder gemaakte keuze er nog als je weer bij dit scherm terugkomt.
       if(state.round1TwoPick){ state.phase = 'round1'; render(); }
       else if(state.selected3.length){ state.phase = 'round2'; render(); }
       else { backToShieldPreserving(); }
@@ -1574,9 +1839,9 @@
 
     var bar = el('div', {class:'bar'});
     var confirm = el('button', {class:'action primary lg', text:'Bevestig moord op ' + name});
-    confirm.addEventListener('click', function(){ markVictim(name); });
+    confirm.addEventListener('click', function(){ markVictim(name, 'forced'); });
     bar.appendChild(confirm);
-    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
     back.addEventListener('click', function(){ backToShieldPreserving(); });
     bar.appendChild(back);
     screen.appendChild(bar);
@@ -1590,27 +1855,66 @@
     screen.appendChild(warn);
 
     var bar = el('div', {class:'bar'});
-    var next = el('button', {class:'action primary lg', text:'Volgende nacht'});
+    var next = el('button', {class:'action primary lg', text:'Volgende dag'});
     next.addEventListener('click', function(){
       state.victimHistory.push({night: state.night, victim: null});
       goToShieldPhase();
     });
     bar.appendChild(next);
-    var back = el('button', {class:'action ghost sm', text:'← Terug naar schilden'});
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
     back.addEventListener('click', function(){ backToShieldPreserving(); });
     bar.appendChild(back);
     screen.appendChild(bar);
     return screen;
   }
 
-  function markVictim(name){
+  function markVictim(name, returnPhase){
     state.players.forEach(function(p){
       if(p.name === name){ p.alive = false; p.deathType = 'murder'; }
     });
     state.victimHistory.push({night: state.night, victim: name, type:'murder'});
     state.lastVictim = name;
+    state.lastVictimReturnPhase = returnPhase || 'nightHandoff';
     state.phase = 'reveal';
     render();
+  }
+
+  // ---------- BAN CONFIRM: extra vangnet vóór de verbanning echt uitgevoerd wordt ----------
+  function renderBanConfirm(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text: state.pendingBanWinner + ' wordt verbannen. Weet je het zeker?'}));
+
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action primary lg', text:'Bevestig'});
+    yes.addEventListener('click', function(){
+      var winner = state.pendingBanWinner;
+      var max = state.pendingBanVotes;
+      state.players.forEach(function(p){ if(p.name === winner){ p.alive = false; p.deathType = 'ban'; } });
+      var sIdx = state.shielded.indexOf(winner);
+      if(sIdx !== -1) state.shielded.splice(sIdx,1);
+      state.victimHistory.push({night: state.night, victim: winner, type:'ban'});
+      state.lastBanished = winner;
+      state.lastBanishedVotes = max;
+      state.votes = {};
+      state.pendingBanWinner = null;
+      state.pendingBanVotes = null;
+      state.phase = 'banReveal';
+      render();
+    });
+    bar.appendChild(yes);
+    var no = el('button', {class:'action ghost sm', text:'← Nee, terug'});
+    no.addEventListener('click', function(){
+      state.pendingBanWinner = null;
+      state.pendingBanVotes = null;
+      state.shieldMode = 'verbannen';
+      state.phase = 'shield';
+      render();
+    });
+    bar.appendChild(no);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
   }
 
   // ---------- BAN REVEAL ----------
@@ -1639,11 +1943,33 @@
         enterEndgameChoice();
         return;
       }
+      state.phase = 'banIdentityConfirm';
+      render();
+    });
+    bar.appendChild(nextBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- BAN IDENTITY CONFIRM: extra vangnet vóór de rol getoond wordt ----------
+  function renderBanIdentityConfirm(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Weet je het zeker?'}));
+
+    var bannedPlayer = state.players.filter(function(p){ return p.name === state.lastBanished; })[0];
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action safe lg', text:'Ja, onthullen'});
+    yes.addEventListener('click', function(){
       if(bannedPlayer) bannedPlayer.identityRevealed = true;
       state.phase = 'banIdentityReveal';
       render();
     });
-    bar.appendChild(nextBtn);
+    bar.appendChild(yes);
+    var no = el('button', {class:'action ghost sm', text:'← Nee, terug'});
+    no.addEventListener('click', function(){ state.phase = 'banReveal'; render(); });
+    bar.appendChild(no);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
     return screen;
@@ -1677,9 +2003,6 @@
   function renderEndGameChoice(){
     var screen = el('div', {class:'screen'});
     screen.appendChild(el('h1', {text:'Eindspel'}));
-    var endgameBanner = el('div', {class:'endgame-banner'});
-    endgameBanner.appendChild(el('span', {text:'⚡ Eindspel actief'}));
-    screen.appendChild(endgameBanner);
     screen.appendChild(el('div', {class:'instruction', text:'Elke speler stemt rood of groen. Zit er ook maar 1 rode stem bij, wordt er opnieuw iemand verbannen.'}));
 
     var alive = alivePlayers();
@@ -1725,12 +2048,18 @@
         state.phase = 'endGameConfirm';
       } else {
         state.endgameVotes = {};
-        state.shieldMode = 'verbannen';
-        state.phase = 'shield';
+        state.phase = 'endGameRedOutcome';
       }
       render();
     });
     bar.appendChild(resolveBtn);
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){
+      state.shieldMode = 'verbannen';
+      state.phase = 'shield';
+      render();
+    });
+    bar.appendChild(back);
     screen.appendChild(bar);
 
     return screen;
@@ -1760,6 +2089,33 @@
     return screen;
   }
 
+  // ---------- END GAME RED OUTCOME: tussenscherm na een rode stem — er moet opnieuw verbannen worden ----------
+  function renderEndGameRedOutcome(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    var endgameBanner = el('div', {class:'endgame-banner'});
+    endgameBanner.appendChild(el('span', {text:'⚡ Eindspel actief'}));
+    wrap.appendChild(endgameBanner);
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Er is rood gestemd. Er moet opnieuw iemand verbannen worden.'}));
+
+    var bar = el('div', {class:'bar'});
+    var goBtn = el('button', {class:'action primary lg', text:'Door naar verbannen'});
+    goBtn.addEventListener('click', function(){
+      state.shieldMode = 'verbannen';
+      state.phase = 'shield';
+      render();
+    });
+    bar.appendChild(goBtn);
+    var backBtn = el('button', {class:'action ghost sm', text:'← Terug naar rood/groen'});
+    backBtn.addEventListener('click', function(){
+      enterEndgameChoice();
+    });
+    bar.appendChild(backBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
   // ---------- IDENTITY REVEAL: tussenscherm voor de spelers hun rol hardop delen ----------
   function renderIdentityReveal(){
     var screen = el('div', {class:'screen'});
@@ -1769,13 +2125,37 @@
     var bar = el('div', {class:'bar'});
     var revealBtn = el('button', {class:'action primary lg', text:'Druk hier om de winnaars te onthullen'});
     revealBtn.addEventListener('click', function(){
-      state.phase = 'gameEnd';
+      state.phase = 'winnersConfirm';
       render();
     });
     bar.appendChild(revealBtn);
     var back = el('button', {class:'action ghost sm', text:'← Terug (per ongeluk gedrukt)'});
     back.addEventListener('click', function(){ state.phase = 'shield'; render(); });
     bar.appendChild(back);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- WINNERS CONFIRM: laatste bevestiging voor het echte winnaarsscherm ----------
+  function renderWinnersConfirm(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Weet je het zeker?'}));
+
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action safe lg', text:'Ja, onthullen'});
+    yes.addEventListener('click', function(){
+      state.phase = 'gameEnd';
+      render();
+    });
+    bar.appendChild(yes);
+    var no = el('button', {class:'action ghost sm', text:'← Nee, terug'});
+    no.addEventListener('click', function(){
+      state.phase = 'identityReveal';
+      render();
+    });
+    bar.appendChild(no);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
     return screen;
@@ -1813,9 +2193,31 @@
 
     var bar = el('div', {class:'bar'});
     var back = el('button', {class:'action ghost sm', text:'← Terug naar begeleider'});
-    back.addEventListener('click', function(){ state.phase = 'shield'; render(); });
+    back.addEventListener('click', function(){ state.phase = 'gameEndExitConfirm'; render(); });
     bar.appendChild(back);
     screen.appendChild(bar);
+    return screen;
+  }
+
+  // ---------- GAME END EXIT CONFIRM: vangnet tegen per ongeluk wegklikken van het winnaarsscherm ----------
+  function renderGameEndExitConfirm(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'warn', text:'Let op: als je doorgaat, verdwijnt dit scherm ook op de statuspagina in de andere kamer.'}));
+
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action primary lg', text:'Ja, doorgaan'});
+    yes.addEventListener('click', function(){
+      state.shieldMode = 'schild';
+      state.phase = 'shield';
+      render();
+    });
+    bar.appendChild(yes);
+    var no = el('button', {class:'action ghost sm', text:'← Nee, terug naar winnaars'});
+    no.addEventListener('click', function(){ state.phase = 'gameEnd'; render(); });
+    bar.appendChild(no);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
     return screen;
   }
 
@@ -1827,11 +2229,30 @@
     wrap.appendChild(el('div', {class:'reveal-name', text: state.lastVictim}));
     var alive = alivePlayers().length;
     wrap.appendChild(el('div', {class:'reveal-sub', text: alive + ' spelers nog in leven'}));
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Druk op bevestig en laat het slachtoffer het volgende scherm lezen.'}));
 
     var bar = el('div', {class:'bar'});
     var nextBtn = el('button', {class:'action primary', text:'Geef door aan ' + state.lastVictim});
     nextBtn.addEventListener('click', function(){ state.phase = 'victimInstructions'; render(); });
     bar.appendChild(nextBtn);
+    var mistakeBtn = el('button', {class:'action ghost sm', text:'Vergissing — terug naar vorige scherm'});
+    mistakeBtn.addEventListener('click', function(){
+      var victim = state.lastVictim;
+      state.players.forEach(function(p){
+        if(p.name === victim){ p.alive = true; p.deathType = null; }
+      });
+      for(var i = state.victimHistory.length - 1; i >= 0; i--){
+        if(state.victimHistory[i].night === state.night && state.victimHistory[i].victim === victim && state.victimHistory[i].type === 'murder'){
+          state.victimHistory.splice(i, 1);
+          break;
+        }
+      }
+      state.lastVictim = null;
+      state.phase = state.lastVictimReturnPhase || 'nightHandoff';
+      state.lastVictimReturnPhase = null;
+      render();
+    });
+    bar.appendChild(mistakeBtn);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
 
@@ -1844,12 +2265,30 @@
     var wrap = el('div', {class:'reveal-wrap'});
     wrap.appendChild(el('div', {class:'reveal-label', text:'Alleen voor ' + state.lastVictim}));
     wrap.appendChild(el('div', {class:'reveal-name', text:'Je bent vermoord'}));
-    wrap.appendChild(el('div', {class:'reveal-message', text:'Verlaat zonder geluid te maken de tafel en volg Jacobine.'}));
+    wrap.appendChild(el('div', {class:'reveal-message', text:'Verlaat zonder geluid te maken de tafel en loop naar de andere ruimte.'}));
 
     var bar = el('div', {class:'bar'});
-    var nextBtn = el('button', {class:'action primary lg', text:'Volgende nacht'});
-    nextBtn.addEventListener('click', function(){ goToShieldPhase(); });
+    var nextBtn = el('button', {class:'action primary lg', text:'Volgende dag'});
+    nextBtn.addEventListener('click', function(){ state.phase = 'nextDayConfirm'; render(); });
     bar.appendChild(nextBtn);
+    wrap.appendChild(bar);
+    screen.appendChild(wrap);
+    return screen;
+  }
+
+  // ---------- NEXT DAY CONFIRM: laatste bevestiging voordat de dag echt begint ----------
+  function renderNextDayConfirm(){
+    var screen = el('div', {class:'screen'});
+    var wrap = el('div', {class:'reveal-wrap'});
+    wrap.appendChild(el('div', {class:'reveal-message', text:'De volgende dag begint. Weet je het zeker?'}));
+
+    var bar = el('div', {class:'bar'});
+    var yes = el('button', {class:'action primary lg', text:'Bevestig'});
+    yes.addEventListener('click', function(){ goToShieldPhase(); });
+    bar.appendChild(yes);
+    var back = el('button', {class:'action ghost sm', text:'← Terug'});
+    back.addEventListener('click', function(){ state.phase = 'victimInstructions'; render(); });
+    bar.appendChild(back);
     wrap.appendChild(bar);
     screen.appendChild(wrap);
     return screen;
