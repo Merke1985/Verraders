@@ -1811,17 +1811,18 @@
     return screen;
   }
 
-  // ---------- ROUND 3: pick who gets murdered -> the other stays safe ----------
+  // ---------- ROUND 3: pick who stays safe -> the other gets murdered (net als
+  // de inperk-rondes: je kiest steeds wie veilig blijft) ----------
   function renderRound3(){
     var screen = el('div', {class:'screen'});
     var instr = el('div', {class:'instruction'});
-    instr.textContent = state.decisiveFromRound1 ? 'Breng de doorslaggevende stem uit — kies wie er vermoord wordt!' : 'Kies wie er vermoord wordt!';
+    instr.textContent = state.decisiveFromRound1 ? 'Breng de doorslaggevende stem uit — kies wie er veilig blijft!' : 'Kies wie er veilig blijft!';
     screen.appendChild(instr);
 
     var grid = el('div', {class:'grid compact'});
     state.remaining2.forEach(function(name){
-      var isVictim = state.round3Pick === name;
-      var isSafe = state.round3Pick && !isVictim;
+      var isSafe = state.round3Pick === name;
+      var isVictim = state.round3Pick && !isSafe;
       var cls = 'tile round3-tile tile-stack' + (isVictim ? ' not-safe victim-pick' : (isSafe ? ' safe-picked' : ''));
       var tile = el('div', {class: cls});
       tile.appendChild(el('span', {class:'tile-icon' + (isVictim ? '' : ' icon-hidden'), text:'💀'}));
@@ -1841,7 +1842,7 @@
     if(state.round3Pick){
       var confirmBtn = el('button', {class:'action primary lg', text:'Bevestig'});
       confirmBtn.addEventListener('click', function(){
-        var victim = state.round3Pick;
+        var victim = state.remaining2.filter(function(n){ return n !== state.round3Pick; })[0];
         state.round3Pick = null;
         markVictim(victim, 'round3');
       });
